@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "NValueSubject",
+    name: "CombineExt",
     platforms: [
         .iOS(.v13),
         .macOS(.v11),
@@ -13,21 +13,19 @@ let package = Package(
         .watchOS(.v6)
     ],
     products: [
-        .library(name: "NValueSubject", targets: ["NValueSubject"])
-    ],
-    dependencies: [
+        .library(name: "CombineExt", targets: ["CombineExt"])
     ],
     targets: [
-        .target(name: "NValueSubject",
+        .target(name: "CombineExt",
                 dependencies: [
                 ],
                 path: "Source",
                 resources: [
                     .copy("../PrivacyInfo.xcprivacy")
                 ]),
-        .testTarget(name: "NValueSubjectTests",
+        .testTarget(name: "CombineExtTests",
                     dependencies: [
-                        "NValueSubject"
+                        "CombineExt"
                     ],
                     path: "Tests"),
     ]

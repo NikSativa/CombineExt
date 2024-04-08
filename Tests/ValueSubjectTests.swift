@@ -1,5 +1,5 @@
 import Foundation
-import NValueSubject
+import CombineExt
 import XCTest
 
 final class ValueSubjectTests: XCTestCase {
