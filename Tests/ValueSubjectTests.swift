@@ -1,15 +1,16 @@
-import Foundation
 import CombineExt
+import Foundation
 import XCTest
 
 final class ValueSubjectTests: XCTestCase {
-    private let subject: ValueSubject<State> = .init(wrappedValue: .init(counter: -1, toggle: false))
+    @ValueSubject
+    private var subject: State = .init(counter: -1, toggle: false)
     private var observers: Set<AnyCancellable> = []
     private var rootStates: [State] = []
 
     override func setUp() {
         super.setUp()
-        subject.sink { [unowned self] state in
+        $subject.sink { [unowned self] state in
             rootStates.append(state)
         }.store(in: &observers)
     }
@@ -22,9 +23,9 @@ final class ValueSubjectTests: XCTestCase {
     }
 
     func testShouldFireSubscriptionOnAnyChanges() {
-        subject.wrappedValue.toggle.toggle()
-        subject.wrappedValue.counter += 1
-        subject.wrappedValue.counter += 1
+        subject.toggle.toggle()
+        subject.counter += 1
+        subject.counter += 1
 
         let expected: [State] = [
             .init(counter: -1, toggle: false),
@@ -38,81 +39,90 @@ final class ValueSubjectTests: XCTestCase {
     func testShouldFireSubscriptionForKeyPath() {
         var expected: [State] = []
 
+        @ValueSubject
+        var newCounterSubject: Int
+        _newCounterSubject = _subject.observe(keyPath: \.counter)
+
         var newCounterStates: [Int] = []
-        let newCounterSubject = subject.observe(keyPath: \.counter)
-        newCounterSubject.sink { state in
+        $newCounterSubject.sink { state in
             newCounterStates.append(state)
         }.store(in: &observers)
         expected.append(.init(counter: -1, toggle: false)) // initial
-        XCTAssertEqual(newCounterSubject.wrappedValue, subject.wrappedValue.counter)
+        XCTAssertEqual(newCounterSubject, subject.counter)
 
-        subject.wrappedValue.toggle.toggle()
+        subject.toggle.toggle()
         expected.append(.init(counter: -1, toggle: true))
-        subject.wrappedValue.counter += 1
+        subject.counter += 1
         expected.append(.init(counter: 0, toggle: true))
-        subject.wrappedValue.counter += 1
+        subject.counter += 1
         expected.append(.init(counter: 1, toggle: true))
 
-        newCounterSubject.wrappedValue = 5
+        newCounterSubject = 5
         expected.append(.init(counter: 5, toggle: true))
-        newCounterSubject.wrappedValue = 3
+        newCounterSubject = 3
         expected.append(.init(counter: 3, toggle: true))
 
+        @ValueSubject
+        var newSecondCounterSubject: Int
+        _newSecondCounterSubject = _subject.observe(keyPath: \.counter)
+
         var newSecondCounterStates: [Int] = []
-        let newSecondCounterSubject = subject.observe(keyPath: \.counter)
-        newCounterSubject.sink { state in
+        $newSecondCounterSubject.sink { state in
             newSecondCounterStates.append(state)
         }.store(in: &observers)
-        XCTAssertEqual(newSecondCounterSubject.wrappedValue, subject.wrappedValue.counter)
+        XCTAssertEqual(newSecondCounterSubject, subject.counter)
+
+        @ValueSubject
+        var newToggleSubject: Bool
+        _newToggleSubject = _subject.observe(keyPath: \.toggle)
 
         var newToggleStates: [Bool] = []
-        let newToggleSubject = subject.observe(keyPath: \.toggle)
-        newToggleSubject.sink { state in
+        $newToggleSubject.sink { state in
             newToggleStates.append(state)
         }.store(in: &observers)
-        XCTAssertEqual(newToggleSubject.wrappedValue, subject.wrappedValue.toggle)
+        XCTAssertEqual(newToggleSubject, subject.toggle)
 
         let dropFirstForNewObserver = expected.count - 1
 
-        subject.wrappedValue.counter += 1
+        subject.counter += 1
         expected.append(.init(counter: 4, toggle: true))
-        subject.wrappedValue.counter -= 1
+        subject.counter -= 1
         expected.append(.init(counter: 3, toggle: true))
-        subject.wrappedValue.counter -= 1
+        subject.counter -= 1
         expected.append(.init(counter: 2, toggle: true))
-        subject.wrappedValue.toggle.toggle()
+        subject.toggle.toggle()
         expected.append(.init(counter: 2, toggle: false))
 
-        newCounterSubject.wrappedValue += 1
+        newCounterSubject += 1
         expected.append(.init(counter: 3, toggle: false))
-        newCounterSubject.wrappedValue = 22
+        newCounterSubject = 22
         expected.append(.init(counter: 22, toggle: false))
 
-        newSecondCounterSubject.wrappedValue = 55
+        newSecondCounterSubject = 55
         expected.append(.init(counter: 55, toggle: false))
-        newSecondCounterSubject.wrappedValue = -11
+        newSecondCounterSubject = -11
         expected.append(.init(counter: -11, toggle: false))
 
-        newToggleSubject.wrappedValue.toggle()
+        newToggleSubject.toggle()
         expected.append(.init(counter: -11, toggle: true))
-        newSecondCounterSubject.wrappedValue = 1
+        newSecondCounterSubject = 1
         expected.append(.init(counter: 1, toggle: true))
-        newToggleSubject.wrappedValue.toggle()
+        newToggleSubject.toggle()
         expected.append(.init(counter: 1, toggle: false))
 
         XCTAssertEqual(rootStates, expected)
 
         let expectedCounterStates: [Int] = expected.map(\.counter)
         XCTAssertEqual(newCounterStates, expectedCounterStates)
-        XCTAssertEqual(newCounterSubject.wrappedValue, subject.wrappedValue.counter)
+        XCTAssertEqual(newCounterSubject, subject.counter)
 
         let expectedSecondCounterStates: [Int] = expected.dropFirst(dropFirstForNewObserver).map(\.counter)
         XCTAssertEqual(newSecondCounterStates, expectedSecondCounterStates)
-        XCTAssertEqual(newSecondCounterSubject.wrappedValue, subject.wrappedValue.counter)
+        XCTAssertEqual(newSecondCounterSubject, subject.counter)
 
         let expectedBoolStates: [Bool] = expected.dropFirst(dropFirstForNewObserver).map(\.toggle)
         XCTAssertEqual(newToggleStates, expectedBoolStates)
-        XCTAssertEqual(newToggleSubject.wrappedValue, subject.wrappedValue.toggle)
+        XCTAssertEqual(newToggleSubject, subject.toggle)
     }
 }
 
