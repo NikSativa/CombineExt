@@ -88,8 +88,6 @@ public extension Publisher {
     }
 
     func mapVoid() -> Publishers.Map<Self, Void> {
-        return map(makeVoid(_:))
+        return map { _ in () }
     }
 }
-
-private func makeVoid(_: some Any) {}
