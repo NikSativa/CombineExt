@@ -78,16 +78,3 @@ public extension ValueSubject where Output: ExpressibleByDictionaryLiteral {
         self.init(wrappedValue: [:])
     }
 }
-
-public extension Publisher {
-    func filterNils<NewOutput>() -> Publishers.CompactMap<Self, NewOutput>
-    where Output == NewOutput? {
-        return compactMap {
-            return $0
-        }
-    }
-
-    func mapVoid() -> Publishers.Map<Self, Void> {
-        return map { _ in () }
-    }
-}

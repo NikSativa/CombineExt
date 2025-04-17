@@ -1,6 +1,19 @@
 import Combine
 import Foundation
 
+public extension Publisher {
+    func filterNils<NewOutput>() -> Publishers.CompactMap<Self, NewOutput>
+    where Output == NewOutput? {
+        return compactMap {
+            return $0
+        }
+    }
+
+    func mapVoid() -> Publishers.Map<Self, Void> {
+        return map { _ in () }
+    }
+}
+
 // MARK: - CombineLatest Publishers
 
 public extension Combine.Publishers {
