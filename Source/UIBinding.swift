@@ -46,7 +46,7 @@ public struct UIBinding<Output>: Combine.Publisher {
         publisher?.receive(subscriber: subscriber)
     }
 
-    public subscript<V>(dynamicMember keyPath: WritableKeyPath<Output, V>) -> UIBinding<V> {
+    public func observe<New>(_ keyPath: WritableKeyPath<Output, New>) -> UIBinding<New> {
         let newPublisher = publisher?.map(keyPath).eraseToAnyPublisher()
 
         return .init(publisher: newPublisher) {
@@ -55,8 +55,14 @@ public struct UIBinding<Output>: Combine.Publisher {
             wrappedValue[keyPath: keyPath] = new
         }
     }
+}
 
-    public subscript<V>(dynamicMember keyPath: WritableKeyPath<Output, V>) -> V {
+public extension UIBinding {
+    subscript<V>(dynamicMember keyPath: WritableKeyPath<Output, V>) -> UIBinding<V> {
+        return observe(keyPath)
+    }
+
+    subscript<V>(dynamicMember keyPath: WritableKeyPath<Output, V>) -> V {
         get {
             wrappedValue[keyPath: keyPath]
         }
