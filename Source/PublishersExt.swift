@@ -2,6 +2,11 @@ import Combine
 import Foundation
 
 public extension Publisher {
+    /// Filters out `nil` values from a stream of optional elements.
+    ///
+    /// This method unwraps optional values, allowing downstream subscribers to receive only non-`nil` values.
+    ///
+    /// - Returns: A publisher emitting only the non-`nil` elements of the upstream optional stream.
     func filterNils<NewOutput>() -> Publishers.CompactMap<Self, NewOutput>
     where Output == NewOutput? {
         return compactMap {
@@ -9,6 +14,11 @@ public extension Publisher {
         }
     }
 
+    /// Maps all emitted elements to `Void`, ignoring their values.
+    ///
+    /// This is useful when only the fact that an event occurred is needed, not its data.
+    ///
+    /// - Returns: A publisher that emits `Void` for every event from the upstream publisher.
     func mapVoid() -> Publishers.Map<Self, Void> {
         return map { _ in () }
     }
@@ -17,28 +27,44 @@ public extension Publisher {
 // MARK: - CombineLatest Publishers
 
 public extension Combine.Publishers {
-    /// A publisher that receives and combines the latest elements from four publishers.
+    /// A custom Combine publisher that combines the latest values from five upstream publishers.
+    ///
+    /// Emits a tuple of the latest values whenever any one of them emits a new element. The publisher only starts emitting after all
+    /// publishers have emitted at least once. It completes when any of the upstream publishers completes.
     struct CombineLatest5<A, B, C, D, E>: Publisher
     where A: Publisher, B: Publisher, C: Publisher, D: Publisher, E: Publisher, A.Failure == B.Failure, B.Failure == C.Failure, C.Failure == D.Failure, D.Failure == E.Failure {
-        /// The kind of values published by this publisher.
-        ///
-        /// This publisher produces five-element tuples of the upstream publishers' output types.
+        /// The output type of the combined publisher — a tuple of all upstream outputs.
         public typealias Output = (A.Output, B.Output, C.Output, D.Output, E.Output)
 
-        /// The kind of errors this publisher might publish.
-        ///
-        /// This publisher produces the failure type shared by its upstream publishers.
+        /// The shared failure type across all upstream publishers.
         public typealias Failure = A.Failure
 
+        /// The first upstream publisher.
         public let a: A
+
+        /// The second upstream publisher.
         public let b: B
+
+        /// The third upstream publisher.
         public let c: C
+
+        /// The fourth upstream publisher.
         public let d: D
+
+        /// The fifth upstream publisher.
         public let e: E
 
         private typealias Zipped = Publishers.CombineLatest<Publishers.CombineLatest3<A, B, C>, Publishers.CombineLatest<D, E>>
         private let real: Publishers.Map<Zipped, Output>
 
+        /// Initializes a `CombineLatest5` publisher.
+        ///
+        /// - Parameters:
+        ///   - a: The first upstream publisher.
+        ///   - b: The second upstream publisher.
+        ///   - c: The third upstream publisher.
+        ///   - d: The fourth upstream publisher.
+        ///   - e: The fifth upstream publisher.
         public init(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E) {
             self.a = a
             self.b = b
@@ -51,41 +77,56 @@ public extension Combine.Publishers {
             }
         }
 
-        /// Attaches the specified subscriber to this publisher.
+        /// Attaches the subscriber to the internal mapped combined publisher.
         ///
-        /// Implementations of ``Publisher`` must implement this method.
-        ///
-        /// The provided implementation of ``Publisher/subscribe(_:)-4u8kn``calls this method.
-        ///
-        /// - Parameter subscriber: The subscriber to attach to this ``Publisher``, after which it can receive values.
+        /// - Parameter subscriber: The subscriber to attach to this publisher.
         public func receive<S>(subscriber: S) where S: Subscriber, D.Failure == S.Failure, S.Input == Output {
             real.receive(subscriber: subscriber)
         }
     }
 
-    /// A publisher that receives and combines the latest elements from four publishers.
+    /// A custom Combine publisher that combines the latest values from six upstream publishers.
+    ///
+    /// Emits a tuple of the latest values whenever any one of them emits a new element. The publisher only starts emitting after all
+    /// publishers have emitted at least once. It completes when any of the upstream publishers completes.
     struct CombineLatest6<A, B, C, D, E, F>: Publisher
     where A: Publisher, B: Publisher, C: Publisher, D: Publisher, E: Publisher, F: Publisher, A.Failure == B.Failure, B.Failure == C.Failure, C.Failure == D.Failure, D.Failure == E.Failure, E.Failure == F.Failure {
-        /// The kind of values published by this publisher.
-        ///
-        /// This publisher produces five-element tuples of the upstream publishers' output types.
+        /// The output type of the combined publisher — a tuple of all upstream outputs.
         public typealias Output = (A.Output, B.Output, C.Output, D.Output, E.Output, F.Output)
 
-        /// The kind of errors this publisher might publish.
-        ///
-        /// This publisher produces the failure type shared by its upstream publishers.
+        /// The shared failure type across all upstream publishers.
         public typealias Failure = A.Failure
 
+        /// The first upstream publisher.
         public let a: A
+
+        /// The second upstream publisher.
         public let b: B
+
+        /// The third upstream publisher.
         public let c: C
+
+        /// The fourth upstream publisher.
         public let d: D
+
+        /// The fifth upstream publisher.
         public let e: E
+
+        /// The sixth upstream publisher.
         public let f: F
 
         private typealias Zipped = Publishers.CombineLatest<Publishers.CombineLatest3<A, B, C>, Publishers.CombineLatest3<D, E, F>>
         private let real: Publishers.Map<Zipped, Output>
 
+        /// Initializes a `CombineLatest6` publisher.
+        ///
+        /// - Parameters:
+        ///   - a: The first upstream publisher.
+        ///   - b: The second upstream publisher.
+        ///   - c: The third upstream publisher.
+        ///   - d: The fourth upstream publisher.
+        ///   - e: The fifth upstream publisher.
+        ///   - f: The sixth upstream publisher.
         public init(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F) {
             self.a = a
             self.b = b
@@ -99,13 +140,9 @@ public extension Combine.Publishers {
             }
         }
 
-        /// Attaches the specified subscriber to this publisher.
+        /// Attaches the subscriber to the internal mapped combined publisher.
         ///
-        /// Implementations of ``Publisher`` must implement this method.
-        ///
-        /// The provided implementation of ``Publisher/subscribe(_:)-4u8kn``calls this method.
-        ///
-        /// - Parameter subscriber: The subscriber to attach to this ``Publisher``, after which it can receive values.
+        /// - Parameter subscriber: The subscriber to attach to this publisher.
         public func receive<S>(subscriber: S) where S: Subscriber, D.Failure == S.Failure, S.Input == Output {
             real.receive(subscriber: subscriber)
         }
@@ -115,48 +152,45 @@ public extension Combine.Publishers {
 // MARK: - zip Publishers
 
 public extension Combine.Publishers {
-    /// A publisher created by applying the zip function to five upstream publishers.
+    /// A custom Combine publisher that zips together the outputs of five upstream publishers.
     ///
-    /// Use a `Publishers.Zip5` to combine the latest elements from five publishers and emit a tuple to the downstream. The returned publisher waits until all five publishers have emitted an event, then delivers the oldest unconsumed event from each publisher as a tuple to the subscriber.
-    ///
-    /// If any upstream publisher finishes successfully or fails with an error, so too does the zipped publisher.
+    /// Waits for all five publishers to emit values, then combines them into a tuple and emits it.
+    /// Each subsequent output includes the next available value from each publisher, in order.
+    /// The zipped publisher completes when the first upstream publisher completes.
     struct Zip5<A, B, C, D, E>: Publisher
     where A: Publisher, B: Publisher, C: Publisher, D: Publisher, E: Publisher, A.Failure == B.Failure, B.Failure == C.Failure, C.Failure == D.Failure, D.Failure == E.Failure {
-        /// The kind of values published by this publisher.
-        ///
-        /// This publisher produces five-element tuples, whose members' types correspond to the types produced by the upstream publishers.
+        /// The output type of the zipped publisher — a tuple of all upstream outputs.
         public typealias Output = (A.Output, B.Output, C.Output, D.Output, E.Output)
 
-        /// The kind of errors this publisher might publish.
-        ///
-        /// This publisher uses its upstream publishers' common failure type.
+        /// The shared failure type across all upstream publishers.
         public typealias Failure = A.Failure
 
-        /// A publisher to zip.
+        /// The first upstream publisher.
         public let a: A
 
-        /// A second publisher to zip.
+        /// The second upstream publisher.
         public let b: B
 
-        /// A third publisher to zip.
+        /// The third upstream publisher.
         public let c: C
 
-        /// A fourth publisher to zip.
+        /// The fourth upstream publisher.
         public let d: D
 
-        /// A fifth publisher to zip.
+        /// The fifth upstream publisher.
         public let e: E
 
         private typealias Zipped = Publishers.Zip<Publishers.Zip3<A, B, C>, Publishers.Zip<D, E>>
         private let real: Publishers.Map<Zipped, Output>
 
-        /// Creates a publisher created by applying the zip function to five upstream publishers.
+        /// Initializes a `Zip5` publisher.
+        ///
         /// - Parameters:
-        ///   - a: A publisher to zip.
-        ///   - b: A second publisher to zip.
-        ///   - c: A third publisher to zip.
-        ///   - d: A fourth publisher to zip.
-        ///   - e: A fifth publisher to zip.
+        ///   - a: The first upstream publisher.
+        ///   - b: The second upstream publisher.
+        ///   - c: The third upstream publisher.
+        ///   - d: The fourth upstream publisher.
+        ///   - e: The fifth upstream publisher.
         public init(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E) {
             self.a = a
             self.b = b
@@ -169,64 +203,57 @@ public extension Combine.Publishers {
             }
         }
 
-        /// Attaches the specified subscriber to this publisher.
+        /// Attaches the subscriber to the internal mapped zipped publisher.
         ///
-        /// Implementations of ``Publisher`` must implement this method.
-        ///
-        /// The provided implementation of ``Publisher/subscribe(_:)-4u8kn``calls this method.
-        ///
-        /// - Parameter subscriber: The subscriber to attach to this ``Publisher``, after which it can receive values.
+        /// - Parameter subscriber: The subscriber to attach to this publisher.
         public func receive<S>(subscriber: S) where S: Subscriber, E.Failure == S.Failure, S.Input == Output {
             real.receive(subscriber: subscriber)
         }
     }
 
-    /// A publisher created by applying the zip function to six upstream publishers.
+    /// A custom Combine publisher that zips together the outputs of six upstream publishers.
     ///
-    /// Use a `Publishers.Zip6` to combine the latest elements from six publishers and emit a tuple to the downstream. The returned publisher waits until all six publishers have emitted an event, then delivers the oldest unconsumed event from each publisher as a tuple to the subscriber.
-    ///
-    /// If any upstream publisher finishes successfully or fails with an error, so too does the zipped publisher.
+    /// Waits for all six publishers to emit values, then combines them into a tuple and emits it.
+    /// Each subsequent output includes the next available value from each publisher, in order.
+    /// The zipped publisher completes when the first upstream publisher completes.
     struct Zip6<A, B, C, D, E, F>: Publisher
     where A: Publisher, B: Publisher, C: Publisher, D: Publisher, E: Publisher, F: Publisher, A.Failure == B.Failure, B.Failure == C.Failure, C.Failure == D.Failure, D.Failure == E.Failure, E.Failure == F.Failure {
-        /// The kind of values published by this publisher.
-        ///
-        /// This publisher produces six-element tuples, whose members' types correspond to the types produced by the upstream publishers.
+        /// The output type of the zipped publisher — a tuple of all upstream outputs.
         public typealias Output = (A.Output, B.Output, C.Output, D.Output, E.Output, F.Output)
 
-        /// The kind of errors this publisher might publish.
-        ///
-        /// This publisher uses its upstream publishers' common failure type.
+        /// The shared failure type across all upstream publishers.
         public typealias Failure = A.Failure
 
-        /// A publisher to zip.
+        /// The first upstream publisher.
         public let a: A
 
-        /// A second publisher to zip.
+        /// The second upstream publisher.
         public let b: B
 
-        /// A third publisher to zip.
+        /// The third upstream publisher.
         public let c: C
 
-        /// A fourth publisher to zip.
+        /// The fourth upstream publisher.
         public let d: D
 
-        /// A fifth publisher to zip.
+        /// The fifth upstream publisher.
         public let e: E
 
-        /// A sixth publisher to zip.
+        /// The sixth upstream publisher.
         public let f: F
 
         private typealias Zipped = Publishers.Zip<Publishers.Zip3<A, B, C>, Publishers.Zip3<D, E, F>>
         private let real: Publishers.Map<Zipped, Output>
 
-        /// Creates a publisher created by applying the zip function to six upstream publishers.
+        /// Initializes a `Zip6` publisher.
+        ///
         /// - Parameters:
-        ///   - a: A publisher to zip.
-        ///   - b: A second publisher to zip.
-        ///   - c: A third publisher to zip.
-        ///   - d: A fourth publisher to zip.
-        ///   - e: A fifth publisher to zip.
-        ///   - f: A sixth publisher to zip.
+        ///   - a: The first upstream publisher.
+        ///   - b: The second upstream publisher.
+        ///   - c: The third upstream publisher.
+        ///   - d: The fourth upstream publisher.
+        ///   - e: The fifth upstream publisher.
+        ///   - f: The sixth upstream publisher.
         public init(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F) {
             self.a = a
             self.b = b
@@ -240,13 +267,9 @@ public extension Combine.Publishers {
             }
         }
 
-        /// Attaches the specified subscriber to this publisher.
+        /// Attaches the subscriber to the internal mapped zipped publisher.
         ///
-        /// Implementations of ``Publisher`` must implement this method.
-        ///
-        /// The provided implementation of ``Publisher/subscribe(_:)-4u8kn``calls this method.
-        ///
-        /// - Parameter subscriber: The subscriber to attach to this ``Publisher``, after which it can receive values.
+        /// - Parameter subscriber: The subscriber to attach to this publisher.
         public func receive<S>(subscriber: S) where S: Subscriber, E.Failure == S.Failure, S.Input == Output {
             real.receive(subscriber: subscriber)
         }

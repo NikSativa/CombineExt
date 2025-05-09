@@ -4,7 +4,7 @@ import XCTest
 
 final class UIStateTests: XCTestCase {
     @UIState
-    private var subject: State = .init(counter: -1, toggle: false)
+    private var subject: State = .init()
     private var observers: Set<AnyCancellable> = []
     private var rootStates: [State] = []
 
@@ -124,13 +124,104 @@ final class UIStateTests: XCTestCase {
         XCTAssertEqual(newToggleStates, expectedBoolStates)
         XCTAssertEqual(newToggleSubject, subject.toggle)
     }
+
+    func test_nested_array() {
+        @UIBinding
+        var second: Int
+        _second = $subject.list.unsafe(1)
+
+        var listStates: [Int] = []
+        _second.sink { state in
+            listStates.append(state)
+        }.store(in: &observers)
+
+        subject.toggle.toggle()
+        subject.counter += 1
+        subject.counter += 1
+        subject.list = [0]
+        subject.list = [0, 1]
+        subject.list = [0, 1, 2]
+        subject.list = [0, 1]
+        subject.list = [0]
+        subject.list = [0, 3]
+        subject.list = [0, 3, 1]
+
+        second = 5
+        second = 6
+
+        let expected: [State] = [
+            .init(counter: -1, toggle: false),
+            .init(counter: -1, toggle: true),
+            .init(counter: 0, toggle: true),
+            .init(counter: 1, toggle: true),
+            .init(counter: 1, toggle: true, list: [0]),
+            .init(counter: 1, toggle: true, list: [0, 1]),
+            .init(counter: 1, toggle: true, list: [0, 1, 2]),
+            .init(counter: 1, toggle: true, list: [0, 1]),
+            .init(counter: 1, toggle: true, list: [0]),
+            .init(counter: 1, toggle: true, list: [0, 3]),
+            .init(counter: 1, toggle: true, list: [0, 3, 1]),
+            .init(counter: 1, toggle: true, list: [0, 5, 1]),
+            .init(counter: 1, toggle: true, list: [0, 6, 1])
+        ]
+
+        XCTAssertEqual(rootStates, expected)
+        XCTAssertEqual(listStates, [1, 1, 1, 3, 3, 5, 6])
+    }
+
+    func test_root_array() {
+        @UIState
+        var subject: [Int] = []
+
+        var rootStates: [[Int]] = []
+        $subject.sink { state in
+            rootStates.append(state)
+        }.store(in: &observers)
+
+        @UIBinding
+        var second: Int
+        _second = $subject.unsafe(1)
+
+        var listStates: [Int] = []
+        _second.sink { state in
+            listStates.append(state)
+        }.store(in: &observers)
+
+        subject = [0]
+        subject = [0, 1]
+        subject = [0, 1, 2]
+        subject = [0, 1]
+        subject = [0]
+        subject = [0, 3]
+        subject = [0, 3, 1]
+
+        second = 5
+        second = 6
+
+        let expected: [[Int]] = [
+            [],
+            [0],
+            [0, 1],
+            [0, 1, 2],
+            [0, 1],
+            [0],
+            [0, 3],
+            [0, 3, 1],
+            [0, 5, 1],
+            [0, 6, 1]
+        ]
+
+        XCTAssertEqual(rootStates, expected)
+        XCTAssertEqual(listStates, [1, 1, 1, 3, 3, 5, 6])
+    }
 }
 
 // MARK: - UIStateTests.State
 
 private extension UIStateTests {
     struct State: Equatable {
-        var counter: Int
-        var toggle: Bool
+        var counter: Int = -1
+        var toggle: Bool = false
+        var list: [Int] = []
     }
 }
