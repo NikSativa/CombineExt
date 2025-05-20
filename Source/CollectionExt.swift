@@ -1,12 +1,16 @@
 import Foundation
 
 public extension Collection {
+    /// Safely access an element at the given index. Returns nil if the index is out of bounds.
     subscript(safe index: Index) -> Element? {
         return index >= startIndex && index < endIndex ? self[index] : nil
     }
 }
 
 public extension MutableCollection {
+    /// Safely get or set an element at the given index. Setting does nothing if the index is out of bounds.
+    ///
+    /// - Note: A nil value will not alter the collection.
     subscript(safe index: Index) -> Element? {
         get {
             return index >= startIndex && index < endIndex ? self[index] : nil
@@ -20,11 +24,9 @@ public extension MutableCollection {
 }
 
 internal extension Collection {
-    /// Complexity of `self.indices.contains(index)`
-    /// O(n), where n is the length of the sequence.
-    /// O(1) for RandomAccessCollection (e.g. Array), otherwise O(n).
+    /// Checks whether the given index is within bounds of the collection.
     ///
-    /// this implementation is O(1) complexity
+    /// This implementation always has O(1) complexity.
     func contains(index: Index) -> Bool {
         return index >= startIndex && index < endIndex
     }

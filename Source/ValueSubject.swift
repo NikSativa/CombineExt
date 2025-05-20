@@ -154,3 +154,7 @@ public extension ValueSubject where Output: ExpressibleByDictionaryLiteral {
         self.init(wrappedValue: [:])
     }
 }
+
+#if swift(>=6.0)
+extension ValueSubject: @unchecked Sendable {}
+#endif

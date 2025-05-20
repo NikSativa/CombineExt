@@ -8,7 +8,7 @@ import Foundation
 /// via the `observe(_:)` method for sub-properties of the state.
 ///
 /// Use this wrapper to manage state reactively in Combine-based architectures.
-/// 
+///
 /// ### Example
 /// ```swift
 /// struct State {
@@ -239,3 +239,15 @@ public extension UIState where Output: ExpressibleByDictionaryLiteral {
         self.init(wrappedValue: [:])
     }
 }
+
+// MARK: - Equatable
+
+extension UIState: Equatable {
+    public static func ==(lhs: UIState<Output>, rhs: UIState<Output>) -> Bool {
+        return lhs.wrappedValue == rhs.wrappedValue
+    }
+}
+
+#if swift(>=6.0)
+extension UIState: @unchecked Sendable {}
+#endif

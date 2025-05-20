@@ -238,3 +238,15 @@ public extension UIBinding where Output: MutableCollection {
         }
     }
 }
+
+// MARK: - Equatable
+
+extension UIBinding: Equatable where Output: Equatable {
+    public static func ==(lhs: UIBinding<Output>, rhs: UIBinding<Output>) -> Bool {
+        return lhs.wrappedValue == rhs.wrappedValue
+    }
+}
+
+#if swift(>=6.0)
+extension UIBinding: @unchecked Sendable {}
+#endif
