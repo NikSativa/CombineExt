@@ -62,7 +62,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
     }
 
     private var bindingRules: [AnyCancellable] = []
-    private var notificationRules: [NotificationToken] = []
+    private var notificationRules: [Any] = []
 
     /// Creates a new managed state wrapper with the specified initial value.
     ///
@@ -78,7 +78,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
         self.innerValue = wrappedValue
 
         bindingRules += applyBindingRules()
-        notificationRules += applyNotificationRules()
+        notificationRules += applyAnyRules()
 
         changeEventStream.send(.init(old: wrappedValue, new: innerValue, isInitial: true))
     }
@@ -99,9 +99,9 @@ public final class ManagedState<Value: BehavioralStateContract> {
             .eraseToAnyPublisher()
     }()
 
-    @NotificationBuilder
-    private func applyNotificationRules() -> [NotificationToken] {
-        Value.applyNotificationRules(to: observe())
+    @AnyTokenBuilder<Any>
+    private func applyAnyRules() -> [Any] {
+        Value.applyAnyRules(to: observe())
     }
 
     @SubscriptionBuilder
@@ -164,26 +164,32 @@ extension ManagedState: Combine.Publisher {
 }
 
 public extension ManagedState {
-    /// Accesses a nested property as a bindable `UIBinding`.
+    /// Provides a two-way binding interface for a property of the managed value using dynamic member lookup.
     ///
-    /// Use this subscript to bind to properties of the wrapped model.
+    /// Use this subscript to bind UI components to individual properties within the wrapped state.
+    ///
+    /// - Parameter keyPath: A writable key path to a property of the wrapped value.
+    /// - Returns: A `UIBinding` representing the two-way binding for the specified property.
     ///
     /// ### Example
     /// ```swift
-    /// $model.title.wrappedValue = "Updated"
+    /// $state.username.wrappedValue = "new_username"
     /// ```
     subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> UIBinding<V> {
         return observe(keyPath)
     }
 
-    /// Direct access to nested properties on the wrapped model.
+    /// Accesses and modifies properties of the wrapped value using dynamic member lookup.
     ///
-    /// Allows convenient read/write access using dot syntax.
+    /// This subscript allows direct interaction with the stored value as if it were a normal instance.
+    ///
+    /// - Parameter keyPath: A writable key path to a property of the wrapped value.
+    /// - Returns: The current value at the specified key path.
     ///
     /// ### Example
     /// ```swift
-    /// model.title = "Updated"
-    /// print(model.title)
+    /// state.username = "John"
+    /// print(state.username)
     /// ```
     subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> V {
         get {

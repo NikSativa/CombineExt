@@ -6,8 +6,8 @@ import Foundation
 /// Conforming types define how a model interacts with the UI and external systems through Combine bindings and notifications.
 /// This protocol is typically used in MVVM or unidirectional data flow architectures.
 ///
-/// Use `applyBindingRules(for:to:)` to bind view updates and side effects to state changes.
-/// Use `applyNotificationRules(to:)` to handle external events, such as system notifications or app lifecycle changes.
+/// Use `applyBindingRules(to:)` to bind view updates and side effects to state changes.
+/// Use `applyAnyRules(to:)` to handle external events, such as system notifications or app lifecycle changes.
 ///
 /// All types conforming to this protocol must also conform to `Equatable` and `ActionHandling`.
 public protocol BehavioralStateContract: Equatable {
@@ -34,49 +34,65 @@ public protocol BehavioralStateContract: Equatable {
     /// ```
     mutating func applyRules()
 
-    /// Sets up Combine bindings between the model’s state and an action receiver.
+    /// A no-op default implementation of ``applyBindingRules(to:)``.
     ///
-    /// Called automatically by `ManagedState` during initialization. Use this to connect
-    /// published state properties and event-driven Combine pipelines that produce actions.
+    /// Provides a fallback binding rule set for types that do not require reactive pipelines.
+    /// This implementation returns an empty array and can be overridden by conforming types.
     ///
-    /// - Parameters:
-    ///   - state: A binding wrapper that enables observation and mutation of the model’s state.
-    ///   - receiver: A subject that accepts actions from the UI or external sources.
-    /// - Returns: An array of `AnyCancellable` instances that manage the lifecycle of the bindings.
+    /// - Parameter state: A publisher emitting diffs of the model's state.
+    /// - Returns: An empty array of cancellables.
+    ///
+    /// ### Example
+    /// ```swift
+    /// struct SimpleModel: BehavioralStateContract {
+    ///     func applyRules() {}
+    /// }
+    /// // `applyBindingRules` returns []
+    /// ```
     @SubscriptionBuilder
     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable]
 
-    /// Sets up notification-based rules that trigger actions in response to external events.
+    /// A no-op default implementation of ``applyAnyRules(to:)``.
     ///
-    /// This can be used to observe app lifecycle events, system notifications, or any other publishers that emit non-UI events.
+    /// Provides a fallback set of tokens for types that do not need external event handling.
     ///
-    /// - Parameter actionReceiver: A closure that dispatches actions in response to notifications.
-    /// - Returns: An array of `NotificationToken` instances used to manage the lifetime of the observers.
-    @NotificationBuilder
-    static func applyNotificationRules(to state: UIBinding<Self>) -> [NotificationToken]
+    /// - Parameter state: A binding to the current model state.
+    /// - Returns: An empty array of tokens.
+    ///
+    /// ### Example
+    /// ```swift
+    /// struct StatelessModel: BehavioralStateContract {
+    ///     func applyRules() {}
+    /// }
+    /// // `applyAnyRules` returns []
+    /// ```
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any]
+}
+
+public extension BehavioralStateContract {
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {}
+
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {}
 }
 
 /// Extension for Combine publishers that emit `DiffedValue` representing changes to a model.
 ///
 /// Enables propagation of binding logic to nested models conforming to `BehavioralStateContract`.
 public extension Publisher where Failure == Never {
-    /// Applies nested binding logic for a child model conforming to `BehavioralStateContract`.
+    /// Applies nested binding rules to a property of the current model.
     ///
-    /// Useful when composing complex state hierarchies, where child models also define their own binding rules.
+    /// This method maps state changes of a composite model to its child, allowing the child
+    /// to apply its own Combine-based bindings.
     ///
-    /// - Parameters:
-    ///   - keyPath: A writable key path to the nested model.
-    /// - Returns: An array of cancellables for managing the nested Combine pipelines.
+    /// - Parameter keyPath: A key path to the nested value within the parent model.
+    /// - Returns: An array of `AnyCancellable` that manages the subscriptions.
     ///
     /// ### Example
     /// ```swift
-    /// struct ParentState: BehavioralStateContract {
-    ///     var child: ChildState
-    ///
-    ///     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
-    ///         state.applyNestedRules(to: \.child)
-    ///     }
-    /// }
+    /// state.applyNestedRules(to: \.settings)
     /// ```
     @SubscriptionBuilder
     func applyNestedRules<Value, NEW>(to keyPath: WritableKeyPath<Value, NEW>) -> [AnyCancellable]
@@ -91,29 +107,23 @@ public extension Publisher where Failure == Never {
 
 /// Extension for `UIBinding` to enable composition of notification-based rules.
 public extension UIBinding where Value: BehavioralStateContract {
-    /// Applies nested notification rules for a child model.
+    /// Applies nested event rules to a property of the current model.
     ///
-    /// Forwards notifications and events down to optional or nested child states.
+    /// This method connects notification logic from a child value, allowing side effects
+    /// to be handled at a nested level.
     ///
-    /// - Parameters:
-    ///   - keyPath: A key path to the child state.
-    /// - Returns: An array of notification tokens to manage the observers.
+    /// - Parameter keyPath: A writable key path from the parent model to the nested value.
+    /// - Returns: An array of observer tokens from the child model.
     ///
     /// ### Example
     /// ```swift
-    /// struct ParentState: BehavioralStateContract {
-    ///     var child: ChildState
-    ///
-    ///     static func applyNotificationRules(to state: UIBinding<Self>) -> [NotificationToken] {
-    ///         state.applyNestedRules(for: \.child)
-    ///     }
-    /// }
+    /// binding.applyNestedRules(for: \.profile)
     /// ```
-    @NotificationBuilder
-    func applyNestedRules<NEW>(for keyPath: WritableKeyPath<Value, NEW>) -> [NotificationToken]
+    @AnyTokenBuilder<Any>
+    func applyNestedRules<NEW>(for keyPath: WritableKeyPath<Value, NEW>) -> [Any]
     where NEW: BehavioralStateContract {
         let state: UIBinding<NEW> = observe(keyPath)
-        NEW.applyNotificationRules(to: state)
+        NEW.applyAnyRules(to: state)
     }
 }
 
@@ -123,30 +133,34 @@ public extension UIBinding where Value: BehavioralStateContract {
 /// as long as they are not `nil`.
 ///
 /// This is useful in hierarchical or compositional state trees.
-///
-/// ### Example
-/// ```swift
-/// struct ParentState: BehavioralStateContract {
-///     var child: ChildState?
-///
-///     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
-///         state.applyNestedRules(to: \.child)
-///     }
-///
-///     static func applyNotificationRules(to state: UIBinding<Self>) -> [NotificationToken] {
-///         state.applyNestedRules(for: \.child)
-///     }
-/// }
-/// ```
 extension Optional: BehavioralStateContract where Wrapped: BehavioralStateContract {
+    /// A no-op implementation of ``applyRules()`` for optional values.
+    ///
+    /// This enables optional nested states to conform to ``BehavioralStateContract``.
     public func applyRules() {}
 
+    /// A no-op implementation of binding rules for optional types.
+    ///
+    /// This is required to conform `Optional<Wrapped>` to `BehavioralStateContract`.
     @SubscriptionBuilder
     public static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {}
 
-    @NotificationBuilder
-    public static func applyNotificationRules(to state: UIBinding<Self>) -> [NotificationToken] {}
+    /// A no-op implementation of generalized notification rules for optional types.
+    ///
+    /// Returns an empty rule set when no wrapped value exists.
+    @AnyTokenBuilder<Any>
+    public static func applyAnyRules(to state: UIBinding<Wrapped?>) -> [Any] {}
 
+    /// Compares two optional models for equality.
+    ///
+    /// Returns `true` if both are `nil` or their wrapped values are equal.
+    ///
+    /// This allows ``Optional<Wrapped>`` to conform to ``Equatable`` when `Wrapped` does.
+    ///
+    /// - Parameters:
+    ///   - lhs: A left-hand side optional value.
+    ///   - rhs: A right-hand side optional value.
+    /// - Returns: `true` if both are `nil`, or if both are non-`nil` and their wrapped values are equal.
     public static func ==(lhs: Self, rhs: Self) -> Bool {
         switch (lhs, rhs) {
         case (.none, .none):

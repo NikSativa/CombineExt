@@ -21,8 +21,8 @@ struct TestModel: BehavioralStateContract, CustomDebugStringConvertible {
         }
     }
 
-    @NotificationBuilder
-    static func applyNotificationRules(to state: UIBinding<Self>) -> [NotificationToken] {}
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {}
 }
 
 extension TestModel {
