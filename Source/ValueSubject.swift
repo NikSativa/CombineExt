@@ -1,29 +1,31 @@
 import Combine
 import Foundation
 
-/// A property wrapper and publisher that holds a current value and emits new values to subscribers.
+/// A property wrapper and Combine publisher that stores a value and emits updates.
 ///
-/// `ValueSubject` is ideal for reactive programming using Combine. It wraps a value and provides Combine-style
-/// publishing and observing capabilities. It also supports property binding using key paths and dynamic member lookup.
+/// `ValueSubject` wraps a value and emits updates via Combine's `Publisher` protocol. It supports
+/// reactive observation, dynamic member lookup, and key-path-based bindings, making it suitable for
+/// building reactive architectures.
 ///
 /// ### Example
 /// ```swift
-/// struct Model {
+/// struct User {
 ///     var name: String
 ///     var age: Int
 /// }
 ///
 /// final class ViewModel {
-///     @ValueSubject var user = Model(name: "Alice", age: 30)
+///     @ValueSubject var user = User(name: "Alice", age: 30)
 ///
-///     func update() {
-///         $user.name.sink { print("Name changed: \($0)") }.store(in: &cancellables)
-///         user.name = "Bob" // Will trigger sink
+///     func observe() {
+///         $user.name
+///             .sink { print("Name updated:", $0) }
+///             .store(in: &cancellables)
+///
+///         user.name = "Bob" // Triggers sink
 ///     }
 /// }
 /// ```
-///
-/// The `@ValueSubject` allows binding to properties such as `$user.name`, enabling reactive chains.
 @dynamicMemberLookup
 @propertyWrapper
 public final class ValueSubject<Output>: Combine.Publisher {
@@ -35,8 +37,9 @@ public final class ValueSubject<Output>: Combine.Publisher {
 
     private var underlyingValue: Output
 
-    /// The current value of the subject. Setting this will publish the value to subscribers
-    /// unless updates are currently being suppressed.
+    /// The current value stored in the subject.
+    ///
+    /// Assigning a new value emits it to subscribers, unless value propagation is suppressed internally.
     public var wrappedValue: Output {
         get {
             return underlyingValue
@@ -47,6 +50,7 @@ public final class ValueSubject<Output>: Combine.Publisher {
             guard isIgnoringNewValues else {
                 return
             }
+
             subject.send(newValue)
         }
     }
@@ -60,6 +64,8 @@ public final class ValueSubject<Output>: Combine.Publisher {
     }
 
     /// A publisher that emits the current and future values of the subject.
+    ///
+    /// Use the projected value (`$`) syntax to access the publisher.
     public lazy var projectedValue: AnyPublisher<Output, Failure> = {
         return subject.eraseToAnyPublisher()
     }()
@@ -72,11 +78,18 @@ public final class ValueSubject<Output>: Combine.Publisher {
         subject.receive(subscriber: subscriber)
     }
 
-    /// Observes a specific property of the wrapped value using a writable key path,
-    /// and returns a new `ValueSubject` for that property.
+    /// Observes a writable key path of the wrapped value and returns a `ValueSubject` for the sub-property.
     ///
-    /// - Parameter keyPath: The writable key path to the property to observe.
-    /// - Returns: A `ValueSubject` that reflects and updates the value at the key path.
+    /// This enables two-way binding between a sub-property and another subject.
+    ///
+    /// - Parameter keyPath: A writable key path from `Output` to the sub-value.
+    /// - Returns: A `ValueSubject` bound to the nested property.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let nameSubject = userSubject.observe(keyPath: \.name)
+    /// nameSubject.wrappedValue = "Charlie"
+    /// ```
     public func observe<New>(keyPath: WritableKeyPath<Output, New>) -> ValueSubject<New> {
         let newValue = wrappedValue[keyPath: keyPath]
         let new = ValueSubject<New>(wrappedValue: newValue)
@@ -87,24 +100,25 @@ public final class ValueSubject<Output>: Combine.Publisher {
                 self?.isIgnoringNewValues = false
                 new.wrappedValue = value
                 self?.isIgnoringNewValues = true
-            }.store(in: &new.observers)
+            }
+            .store(in: &new.observers)
 
         new.dropFirst()
             .sink { [unowned self, weak new] value in
                 new?.isIgnoringNewValues = false
                 wrappedValue[keyPath: keyPath] = value
                 new?.isIgnoringNewValues = true
-            }.store(in: &observers)
+            }
+            .store(in: &observers)
 
         return new
     }
 }
 
 public extension ValueSubject {
-    /// Provides dynamic member lookup for nested properties using key paths.
+    /// Returns a `ValueSubject` bound to a nested property using dynamic member lookup.
     ///
-    /// This returns a `ValueSubject` bound to a sub-property of the current subject's value.
-    /// It enables chaining and reactive observation of nested structures using dot-syntax.
+    /// Enables chaining bindings using dot-syntax, e.g. `$user.name`.
     ///
     /// - Parameter keyPath: A writable key path from the root `Output` to a nested property.
     /// - Returns: A `ValueSubject` for the nested property.
@@ -112,9 +126,9 @@ public extension ValueSubject {
         return observe(keyPath: keyPath)
     }
 
-    /// Directly accesses the nested property specified by the key path.
+    /// Accesses the value of a nested property directly via dynamic member lookup.
     ///
-    /// This subscript enables reading and writing of a sub-property on the underlying value.
+    /// Use this to get or set nested properties directly, not as bindings.
     ///
     /// - Parameter keyPath: A writable key path to the nested property.
     /// - Returns: The current value at the given key path.
@@ -129,7 +143,7 @@ public extension ValueSubject {
 }
 
 public extension ValueSubject where Output: ExpressibleByNilLiteral {
-    /// Initializes a `ValueSubject` with an initial `nil` value.
+    /// Initializes the subject with a `nil` value.
     ///
     /// Available when `Output` conforms to `ExpressibleByNilLiteral`.
     convenience init() {
@@ -138,7 +152,7 @@ public extension ValueSubject where Output: ExpressibleByNilLiteral {
 }
 
 public extension ValueSubject where Output: ExpressibleByArrayLiteral {
-    /// Initializes a `ValueSubject` with an empty array.
+    /// Initializes the subject with an empty array.
     ///
     /// Available when `Output` conforms to `ExpressibleByArrayLiteral`.
     convenience init() {
@@ -147,10 +161,14 @@ public extension ValueSubject where Output: ExpressibleByArrayLiteral {
 }
 
 public extension ValueSubject where Output: ExpressibleByDictionaryLiteral {
-    /// Initializes a `ValueSubject` with an empty dictionary.
+    /// Initializes the subject with an empty dictionary.
     ///
     /// Available when `Output` conforms to `ExpressibleByDictionaryLiteral`.
     convenience init() {
         self.init(wrappedValue: [:])
     }
 }
+
+#if swift(>=6.0)
+extension ValueSubject: @unchecked Sendable {}
+#endif

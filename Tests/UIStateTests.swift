@@ -12,7 +12,8 @@ final class UIStateTests: XCTestCase {
         super.setUp()
         $subject.sink { [unowned self] state in
             rootStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
     }
 
     func testShouldFireSubscriptionImmediately() {
@@ -46,7 +47,8 @@ final class UIStateTests: XCTestCase {
         var newCounterStates: [Int] = []
         $newCounterSubject.sink { state in
             newCounterStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
         expected.append(.init(counter: -1, toggle: false)) // initial
         XCTAssertEqual(newCounterSubject, subject.counter)
 
@@ -69,7 +71,8 @@ final class UIStateTests: XCTestCase {
         var newSecondCounterStates: [Int] = []
         $newSecondCounterSubject.sink { state in
             newSecondCounterStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
         XCTAssertEqual(newSecondCounterSubject, subject.counter)
 
         @UIBinding
@@ -79,7 +82,8 @@ final class UIStateTests: XCTestCase {
         var newToggleStates: [Bool] = []
         $newToggleSubject.sink { state in
             newToggleStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
         XCTAssertEqual(newToggleSubject, subject.toggle)
 
         let dropFirstForNewObserver = expected.count - 1
@@ -133,7 +137,8 @@ final class UIStateTests: XCTestCase {
         var listStates: [Int] = []
         _second.sink { state in
             listStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
 
         subject.toggle.toggle()
         subject.counter += 1
@@ -176,7 +181,8 @@ final class UIStateTests: XCTestCase {
         var rootStates: [[Int]] = []
         $subject.sink { state in
             rootStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
 
         @UIBinding
         var second: Int
@@ -185,7 +191,8 @@ final class UIStateTests: XCTestCase {
         var listStates: [Int] = []
         _second.sink { state in
             listStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
 
         subject = [0]
         subject = [0, 1]
@@ -215,8 +222,6 @@ final class UIStateTests: XCTestCase {
         XCTAssertEqual(listStates, [1, 1, 1, 3, 3, 5, 6])
     }
 }
-
-// MARK: - UIStateTests.State
 
 private extension UIStateTests {
     struct State: Equatable {

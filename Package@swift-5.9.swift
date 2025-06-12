@@ -13,7 +13,9 @@ let package = Package(
         .watchOS(.v6)
     ],
     products: [
-        .library(name: "CombineExt", targets: ["CombineExt"])
+        .library(name: "CombineExt", targets: ["CombineExt"]),
+        .library(name: "CombineExtStatic", type: .static, targets: ["CombineExt"]),
+        .library(name: "CombineExtDynamic", type: .dynamic, targets: ["CombineExt"])
     ],
     targets: [
         .target(name: "CombineExt",

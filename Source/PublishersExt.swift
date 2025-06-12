@@ -7,6 +7,17 @@ public extension Publisher {
     /// This method unwraps optional values, allowing downstream subscribers to receive only non-`nil` values.
     ///
     /// - Returns: A publisher emitting only the non-`nil` elements of the upstream optional stream.
+    ///
+    /// ### Example
+    /// ```swift
+    /// Just<String?>(nil)
+    ///     .filterNils()
+    ///     .sink { print($0) } // This will not be called
+    ///
+    /// Just("Hello")
+    ///     .filterNils()
+    ///     .sink { print($0) } // Prints "Hello"
+    /// ```
     func filterNils<NewOutput>() -> Publishers.CompactMap<Self, NewOutput>
     where Output == NewOutput? {
         return compactMap {
@@ -19,18 +30,36 @@ public extension Publisher {
     /// This is useful when only the fact that an event occurred is needed, not its data.
     ///
     /// - Returns: A publisher that emits `Void` for every event from the upstream publisher.
+    ///
+    /// ### Example
+    /// ```swift
+    /// Just(42)
+    ///     .mapVoid()
+    ///     .sink { print("Triggered") } // Prints "Triggered"
+    /// ```
     func mapVoid() -> Publishers.Map<Self, Void> {
         return map { _ in () }
     }
 }
 
-// MARK: - CombineLatest Publishers
-
 public extension Combine.Publishers {
     /// A custom Combine publisher that combines the latest values from five upstream publishers.
     ///
-    /// Emits a tuple of the latest values whenever any one of them emits a new element. The publisher only starts emitting after all
-    /// publishers have emitted at least once. It completes when any of the upstream publishers completes.
+    /// Emits a tuple of the latest values whenever any one of the upstream publishers emits a new element.
+    /// The publisher starts emitting only after all publishers have emitted at least one value.
+    /// It completes as soon as any of the upstream publishers completes.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let a = PassthroughSubject<Int, Never>()
+    /// let b = PassthroughSubject<String, Never>()
+    /// let c = PassthroughSubject<Double, Never>()
+    /// let d = PassthroughSubject<Bool, Never>()
+    /// let e = PassthroughSubject<Character, Never>()
+    ///
+    /// let combined = Publishers.CombineLatest5(a, b, c, d, e)
+    ///     .sink { print("Combined:", $0) }
+    /// ```
     struct CombineLatest5<A, B, C, D, E>: Publisher
     where A: Publisher, B: Publisher, C: Publisher, D: Publisher, E: Publisher, A.Failure == B.Failure, B.Failure == C.Failure, C.Failure == D.Failure, D.Failure == E.Failure {
         /// The output type of the combined publisher — a tuple of all upstream outputs.
@@ -77,7 +106,9 @@ public extension Combine.Publishers {
             }
         }
 
-        /// Attaches the subscriber to the internal mapped combined publisher.
+        /// Attaches the specified subscriber to this publisher.
+        ///
+        /// This function forwards the subscription to the underlying combined publisher.
         ///
         /// - Parameter subscriber: The subscriber to attach to this publisher.
         public func receive<S>(subscriber: S) where S: Subscriber, D.Failure == S.Failure, S.Input == Output {
@@ -87,8 +118,22 @@ public extension Combine.Publishers {
 
     /// A custom Combine publisher that combines the latest values from six upstream publishers.
     ///
-    /// Emits a tuple of the latest values whenever any one of them emits a new element. The publisher only starts emitting after all
-    /// publishers have emitted at least once. It completes when any of the upstream publishers completes.
+    /// Emits a tuple of the latest values whenever any one of the upstream publishers emits a new element.
+    /// The publisher starts emitting only after all publishers have emitted at least one value.
+    /// It completes as soon as any of the upstream publishers completes.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let a = PassthroughSubject<Int, Never>()
+    /// let b = PassthroughSubject<String, Never>()
+    /// let c = PassthroughSubject<Double, Never>()
+    /// let d = PassthroughSubject<Bool, Never>()
+    /// let e = PassthroughSubject<Character, Never>()
+    /// let f = PassthroughSubject<Float, Never>()
+    ///
+    /// let combined = Publishers.CombineLatest6(a, b, c, d, e, f)
+    ///     .sink { print("Combined:", $0) }
+    /// ```
     struct CombineLatest6<A, B, C, D, E, F>: Publisher
     where A: Publisher, B: Publisher, C: Publisher, D: Publisher, E: Publisher, F: Publisher, A.Failure == B.Failure, B.Failure == C.Failure, C.Failure == D.Failure, D.Failure == E.Failure, E.Failure == F.Failure {
         /// The output type of the combined publisher — a tuple of all upstream outputs.
@@ -140,7 +185,9 @@ public extension Combine.Publishers {
             }
         }
 
-        /// Attaches the subscriber to the internal mapped combined publisher.
+        /// Attaches the specified subscriber to this publisher.
+        ///
+        /// This function forwards the subscription to the underlying combined publisher.
         ///
         /// - Parameter subscriber: The subscriber to attach to this publisher.
         public func receive<S>(subscriber: S) where S: Subscriber, D.Failure == S.Failure, S.Input == Output {
@@ -149,14 +196,24 @@ public extension Combine.Publishers {
     }
 }
 
-// MARK: - zip Publishers
-
 public extension Combine.Publishers {
     /// A custom Combine publisher that zips together the outputs of five upstream publishers.
     ///
     /// Waits for all five publishers to emit values, then combines them into a tuple and emits it.
     /// Each subsequent output includes the next available value from each publisher, in order.
     /// The zipped publisher completes when the first upstream publisher completes.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let a = PassthroughSubject<Int, Never>()
+    /// let b = PassthroughSubject<String, Never>()
+    /// let c = PassthroughSubject<Double, Never>()
+    /// let d = PassthroughSubject<Bool, Never>()
+    /// let e = PassthroughSubject<Character, Never>()
+    ///
+    /// let zipped = Publishers.Zip5(a, b, c, d, e)
+    ///     .sink { print("Zipped:", $0) }
+    /// ```
     struct Zip5<A, B, C, D, E>: Publisher
     where A: Publisher, B: Publisher, C: Publisher, D: Publisher, E: Publisher, A.Failure == B.Failure, B.Failure == C.Failure, C.Failure == D.Failure, D.Failure == E.Failure {
         /// The output type of the zipped publisher — a tuple of all upstream outputs.
@@ -203,7 +260,9 @@ public extension Combine.Publishers {
             }
         }
 
-        /// Attaches the subscriber to the internal mapped zipped publisher.
+        /// Attaches the specified subscriber to this publisher.
+        ///
+        /// This function forwards the subscription to the underlying zipped publisher.
         ///
         /// - Parameter subscriber: The subscriber to attach to this publisher.
         public func receive<S>(subscriber: S) where S: Subscriber, E.Failure == S.Failure, S.Input == Output {
@@ -216,6 +275,19 @@ public extension Combine.Publishers {
     /// Waits for all six publishers to emit values, then combines them into a tuple and emits it.
     /// Each subsequent output includes the next available value from each publisher, in order.
     /// The zipped publisher completes when the first upstream publisher completes.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let a = PassthroughSubject<Int, Never>()
+    /// let b = PassthroughSubject<String, Never>()
+    /// let c = PassthroughSubject<Double, Never>()
+    /// let d = PassthroughSubject<Bool, Never>()
+    /// let e = PassthroughSubject<Character, Never>()
+    /// let f = PassthroughSubject<Float, Never>()
+    ///
+    /// let zipped = Publishers.Zip6(a, b, c, d, e, f)
+    ///     .sink { print("Zipped:", $0) }
+    /// ```
     struct Zip6<A, B, C, D, E, F>: Publisher
     where A: Publisher, B: Publisher, C: Publisher, D: Publisher, E: Publisher, F: Publisher, A.Failure == B.Failure, B.Failure == C.Failure, C.Failure == D.Failure, D.Failure == E.Failure, E.Failure == F.Failure {
         /// The output type of the zipped publisher — a tuple of all upstream outputs.
@@ -267,7 +339,9 @@ public extension Combine.Publishers {
             }
         }
 
-        /// Attaches the subscriber to the internal mapped zipped publisher.
+        /// Attaches the specified subscriber to this publisher.
+        ///
+        /// This function forwards the subscription to the underlying zipped publisher.
         ///
         /// - Parameter subscriber: The subscriber to attach to this publisher.
         public func receive<S>(subscriber: S) where S: Subscriber, E.Failure == S.Failure, S.Input == Output {

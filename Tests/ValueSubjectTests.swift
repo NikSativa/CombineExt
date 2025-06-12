@@ -12,7 +12,8 @@ final class ValueSubjectTests: XCTestCase {
         super.setUp()
         $subject.sink { [unowned self] state in
             rootStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
     }
 
     func testShouldFireSubscriptionImmediately() {
@@ -46,7 +47,8 @@ final class ValueSubjectTests: XCTestCase {
         var newCounterStates: [Int] = []
         $newCounterSubject.sink { state in
             newCounterStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
         expected.append(.init(counter: -1, toggle: false)) // initial
         XCTAssertEqual(newCounterSubject, subject.counter)
 
@@ -69,7 +71,8 @@ final class ValueSubjectTests: XCTestCase {
         var newSecondCounterStates: [Int] = []
         $newSecondCounterSubject.sink { state in
             newSecondCounterStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
         XCTAssertEqual(newSecondCounterSubject, subject.counter)
 
         @ValueSubject
@@ -79,7 +82,8 @@ final class ValueSubjectTests: XCTestCase {
         var newToggleStates: [Bool] = []
         $newToggleSubject.sink { state in
             newToggleStates.append(state)
-        }.store(in: &observers)
+        }
+        .store(in: &observers)
         XCTAssertEqual(newToggleSubject, subject.toggle)
 
         let dropFirstForNewObserver = expected.count - 1
@@ -125,8 +129,6 @@ final class ValueSubjectTests: XCTestCase {
         XCTAssertEqual(newToggleSubject, subject.toggle)
     }
 }
-
-// MARK: - ValueSubjectTests.State
 
 private extension ValueSubjectTests {
     struct State: Equatable {
