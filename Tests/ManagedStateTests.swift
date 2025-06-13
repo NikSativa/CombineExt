@@ -31,6 +31,32 @@ final class ManagedStateTests: XCTestCase {
         texts = []
     }
 
+    private func subscribe() {
+        $subject.observe(\.self)
+            .sink { new in
+                self.models.append(new)
+            }
+            .store(in: &cancellables)
+
+        $subject.number
+            .sink { new in
+                self.numbers.append(new)
+            }
+            .store(in: &cancellables)
+
+        $subject.binding
+            .sink { new in
+                self.binding.append(new)
+            }
+            .store(in: &cancellables)
+
+        $subject.text
+            .sink { new in
+                self.texts.append(new)
+            }
+            .store(in: &cancellables)
+    }
+
     @MainActor
     func testClosureCapturing() {
         let some: () -> Void = { [_subject] in
@@ -121,29 +147,70 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertEqual(subject.text, "4")
     }
 
-    private func subscribe() {
-        $subject.observe(\.self)
-            .sink { new in
-                self.models.append(new)
-            }
-            .store(in: &cancellables)
+    func testCounter() {
+        @ManagedState
+        var state: CounterModel = .init()
+        // state.value += 1 // 0
+        XCTAssertEqual(state.valueFunc, 0)
+        XCTAssertEqual(state.valueBind, 0)
+        XCTAssertEqual(CounterModel.counterFunc, 1)
+        XCTAssertEqual(CounterModel.counterBind, 1)
 
-        $subject.number
-            .sink { new in
-                self.numbers.append(new)
-            }
-            .store(in: &cancellables)
+        state.value += 1 // 1
+        XCTAssertEqual(state.valueFunc, 2)
+        XCTAssertEqual(state.valueBind, 3)
+        XCTAssertEqual(CounterModel.counterFunc, 3)
+        XCTAssertEqual(CounterModel.counterBind, 2)
 
-        $subject.binding
-            .sink { new in
-                self.binding.append(new)
-            }
-            .store(in: &cancellables)
+        state.value += 1 // 2
+        XCTAssertEqual(state.valueFunc, 4)
+        XCTAssertEqual(state.valueBind, 6)
+        XCTAssertEqual(CounterModel.counterFunc, 5)
+        XCTAssertEqual(CounterModel.counterBind, 3)
 
-        $subject.text
-            .sink { new in
-                self.texts.append(new)
-            }
-            .store(in: &cancellables)
+        state.value += 1 // 3
+        XCTAssertEqual(state.valueFunc, 6)
+        XCTAssertEqual(state.valueBind, 9)
+        XCTAssertEqual(CounterModel.counterFunc, 7)
+        XCTAssertEqual(CounterModel.counterBind, 4)
+    }
+}
+
+private struct CounterModel: BehavioralStateContract {
+    var value: Int = 0
+
+    var valueFunc: Int = 0
+    var valueBind: Int = 0
+
+    nonisolated(unsafe) static var counterFunc: Int = 0
+    nonisolated(unsafe) static var counterBind: Int = 0
+
+    mutating func applyRules() {
+        Self.counterFunc += 1
+        valueFunc = value * 2
+    }
+
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+        state.bindDiffed(to: \.value) { parent in
+            counterBind += 1
+            parent.new.valueBind = parent.new.value * 3
+        }
+    }
+
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {}
+}
+
+@propertyWrapper
+private struct AlwaysEqual<Value: Equatable>: Equatable {
+    var wrappedValue: Value
+
+    init(wrappedValue: Value) {
+        self.wrappedValue = wrappedValue
+    }
+
+    static func ==(lhs: Self, rhs: Self) -> Bool {
+        return true
     }
 }

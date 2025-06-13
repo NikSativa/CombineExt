@@ -132,11 +132,7 @@ public extension Publisher where Failure == Never {
     ///
     /// ### Example
     /// ```swift
-    /// publisher.bind(to: \.name) { user in
-    ///     { newName in
-    ///         print("Name updated:", newName)
-    ///     }
-    /// }
+    /// publisher.bind(to: \.name, onChange: Value.onChangeNew(_:))
     /// ```
     func bind<Value, NEW>(to keyPath: WritableKeyPath<Value, NEW>,
                           onChange: @escaping (Value) -> (NEW) -> Void) -> Cancellable
@@ -160,11 +156,7 @@ public extension Publisher where Failure == Never {
     ///
     /// ### Example
     /// ```swift
-    /// publisher.bind(to: \.isEnabled) { model in
-    ///     {
-    ///         print("Enabled flag changed")
-    ///     }
-    /// }
+    /// publisher.bind(to: \.name, onChange: Value.onChangeNew)
     /// ```
     func bind<Value>(to keyPath: WritableKeyPath<Value, some Equatable>,
                      onChange: @escaping (Value) -> () -> Void) -> Cancellable

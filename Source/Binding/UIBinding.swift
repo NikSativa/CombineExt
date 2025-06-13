@@ -7,7 +7,7 @@ import Foundation
 /// - Nested bindings using key paths
 /// - Dynamic member access (`binding.someProperty`)
 /// - Safe and unsafe element access for collections
-/// This is especially useful in MVVM or reactive UI architectures.
+/// This is especially useful in MVVM or reactive UI architectures, allowing views to reactively update when underlying data changes.
 ///
 /// ### Example
 /// ```swift
@@ -40,6 +40,13 @@ public struct UIBinding<Value> {
     /// Returns the `UIBinding` itself for use with the projected value (`$`) syntax.
     ///
     /// Use this property to pass the binding as a reference, especially to child views or components.
+    ///
+    /// ### Example
+    /// ```swift
+    /// func bind(_ binding: UIBinding<String>) {
+    ///     $binding.sink { print($0) }.store(in: &cancellables)
+    /// }
+    /// ```
     public var projectedValue: UIBinding<Value> {
         return self
     }
@@ -83,12 +90,43 @@ public struct UIBinding<Value> {
         self.publisher = EventSubject().eraseToAnyPublisher()
     }
 
-    /// Initializes a `UIBinding` with a Combine publisher, getter, and setter.
+    /// Initializes a constant `UIBinding` with an immutable value. Not intended for direct use.
+    ///
+    /// This initializer is useful when you need a read-only binding that never emits changes.
+    /// It can be used for previews, test data, or placeholder values where dynamic updates are not needed.
+    ///
+    /// - Parameter wrappedValue: The constant value to expose.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let constantName: UIBinding<String> = UIBinding(wrappedValue: "Read-only")
+    /// print(constantName.wrappedValue) // "Read-only"
+    /// ```
+    public init(wrappedValue value: Value) {
+        self.get = { value }
+        self.set = { _ in }
+        self.publisher = EventSubject().eraseToAnyPublisher()
+    }
+
+    /// Initializes a `UIBinding` with a publisher, getter, and setter.
+    ///
+    /// Use this initializer when constructing bindings manually from existing sources of truth,
+    /// such as external models, state containers, or dynamic data.
     ///
     /// - Parameters:
-    ///   - publisher: An optional publisher for value changes.
-    ///   - get: A closure to retrieve the current value.
+    ///   - publisher: A publisher emitting `DiffedValue<Value>`, used for downstream subscriptions.
+    ///   - get: A closure that returns the current value.
     ///   - set: A closure to update the value.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let state = MyModel()
+    /// let binding = UIBinding(
+    ///     publisher: subject.eraseToAnyPublisher(),
+    ///     get: { state.title },
+    ///     set: { state.title = $0 }
+    /// )
+    /// ```
     public init(publisher: AnyPublisher<DiffedValue<Value>, Never>? = nil,
                 get: @escaping () -> Value,
                 set: @escaping (Value) -> Void) {
@@ -98,7 +136,13 @@ public struct UIBinding<Value> {
     }
 }
 
-/// Conformance to `SafeBinding` for safe element access in collections.
+/// Conforms `UIBinding` to `SafeBinding` to support safe collection access.
+///
+/// This enables usage like:
+///
+/// ```swift
+/// let value = binding[safe: 2]
+/// ```
 extension UIBinding: SafeBinding {}
 
 /// Conformance to `Publisher`, allowing this binding to emit value changes using Combine.
@@ -171,5 +215,8 @@ extension UIBinding: Equatable where Value: Equatable {
 }
 
 #if swift(>=6.0)
+/// Conforms `UIBinding` to `Sendable` for safe use in concurrent contexts.
+///
+/// This allows bindings to be used in structured concurrency when their contents are safe.
 extension UIBinding: @unchecked Sendable {}
 #endif

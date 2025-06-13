@@ -1,10 +1,29 @@
 import Combine
 import Foundation
 
-/// A property wrapper that manages observable and bindable state conforming to `BehavioralStateContract`.
+/// A global flag that enables or disables cyclic dependency assertions in state rules.
 ///
-/// `ManagedState` enables reactive state updates, binding rule application, and publisher-based observation.
-/// This wrapper is especially useful for ViewModel-style architectures and dynamic UI synchronization.
+/// When set to `true`, an assertion will be triggered if rule evaluation loops exceed a safe limit.
+/// Defaults to `true`.
+#if swift(>=6.0)
+public nonisolated(unsafe) var ManagedStateCyclicDependencyWarning: Bool = true
+/// The maximum number of times state rules may be reapplied before considering it a cyclic dependency.
+///
+/// Defaults to `100`. If exceeded, and `ManagedStateCyclicDependencyWarning` is `true`, an assertion is triggered.
+public nonisolated(unsafe) var ManagedStateCyclicDependencyMaxDepth: Int = 100
+#else
+public var ManagedStateCyclicDependencyWarning: Bool = true
+/// The maximum number of times state rules may be reapplied before considering it a cyclic dependency.
+///
+/// Defaults to `100`. If exceeded, and `ManagedStateCyclicDependencyWarning` is `true`, an assertion is triggered.
+public var ManagedStateCyclicDependencyMaxDepth: Int = 100
+#endif
+/// A property wrapper that manages reactive state conforming to `BehavioralStateContract`.
+///
+/// `ManagedState` offers automatic rule binding, dynamic UI syncing, and observable state changes using Combine.
+/// Suitable for ViewModels and dynamic UI frameworks like SwiftUI or UIKit.
+///
+/// - Note: This type supports `@dynamicMemberLookup` to simplify access to underlying properties.
 ///
 /// ### Example
 /// ```swift
@@ -16,11 +35,8 @@ import Foundation
 /// }
 ///
 /// @ManagedState var state = MyState(count: 0)
-///
 /// $state.publisher
-///     .sink { change in
-///         print("State changed from \(change.old?.count ?? 0) to \(change.new.count)")
-///     }
+///     .sink { print("Updated count:", $0.new.count) }
 ///     .store(in: &cancellables)
 /// ```
 @dynamicMemberLookup
@@ -30,11 +46,10 @@ public final class ManagedState<Value: BehavioralStateContract> {
     ///
     /// This subject drives the `publisher` and emits a `Change<Value>` when the wrapped model value changes.
     /// Duplicate values are filtered using `Equatable`.
-    private lazy var valueSubject: CurrentValueSubject<DiffedValue<Value>, Failure> = CurrentValueSubject(.init(old: nil, new: observe()))
-    private let rulesSubject: EventSubject<DiffedValue<Value>> = .init()
+    private let valueSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
+    private let rulesSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
+    private let changeEventStream: EventSubject<PairedValue<Value>> = .init()
 
-    /// receiving oldValue
-    private lazy var changeEventStream: EventSubject<PairedValue<Value>> = .init()
     private var innerValue: Value
 
     /// The current model value being managed.
@@ -54,9 +69,16 @@ public final class ManagedState<Value: BehavioralStateContract> {
         }
     }
 
-    /// The projected value used to access binding and observation capabilities.
+    /// Accesses the property wrapper instance for binding or observing capabilities.
     ///
-    /// Use this property (prefixed with `$`) to observe or bind to the state.
+    /// Use this projected property (`$state`) to access Combine-based observation tools.
+    ///
+    /// ### Example
+    /// ```swift
+    /// $state.publisher
+    ///     .sink { print($0) }
+    ///     .store(in: &bag)
+    /// ```
     public var projectedValue: ManagedState<Value> {
         return self
     }
@@ -77,20 +99,28 @@ public final class ManagedState<Value: BehavioralStateContract> {
     public init(wrappedValue: Value) {
         self.innerValue = wrappedValue
 
-        bindingRules += applyBindingRules()
-        notificationRules += applyAnyRules()
+        // initial `observe`
+        @UIState
+        var bindable = wrappedValue
+        self.valueSubject = .init(.init(old: nil, new: $bindable.observe()))
+        self.rulesSubject = .init(.init(old: nil, new: $bindable.observe()))
 
+        // create rules
+        bindingRules += createBindingRules()
+        notificationRules += createAnyRules()
+
+        // send initial state
         changeEventStream.send(.init(old: wrappedValue, new: innerValue, isInitial: true))
     }
 
-    /// A publisher that emits distinct changes to the managed value.
+    /// A publisher that emits only distinct changes to the wrapped value.
     ///
-    /// The publisher emits `DiffedValue<Value>` every time the state changes and is not equal to the previous value.
+    /// Use this publisher to observe meaningful state transitions.
     ///
     /// ### Example
     /// ```swift
     /// $state.publisher
-    ///     .sink { print("State updated:", $0) }
+    ///     .sink { diff in print("Changed:", diff) }
     ///     .store(in: &cancellables)
     /// ```
     public lazy var publisher: AnyPublisher<DiffedValue<Value>, Failure> = {
@@ -100,12 +130,12 @@ public final class ManagedState<Value: BehavioralStateContract> {
     }()
 
     @AnyTokenBuilder<Any>
-    private func applyAnyRules() -> [Any] {
+    private func createAnyRules() -> [Any] {
         Value.applyAnyRules(to: observe())
     }
 
     @SubscriptionBuilder
-    private func applyBindingRules() -> [AnyCancellable] {
+    private func createBindingRules() -> [AnyCancellable] {
         changeEventStream
             .removeDuplicates()
             .sink { [unowned self] new in
@@ -115,33 +145,42 @@ public final class ManagedState<Value: BehavioralStateContract> {
         Value.applyBindingRules(to: rulesSubject.eraseToAnyPublisher())
     }
 
-    /// Handles incoming actions by mutating and reassigning the wrapped value.
-    ///
-    /// Applies the specified action to the state, performs post-processing, and emits changes via the subject.
-    ///
-    /// - Parameter action: The internal `Action` enum representing a root or property change.
-    private func applyRules(with values: PairedValue<Value>) {
-        func shouldEmit(old: Value?, new: Value) -> Bool {
-            return values.isInitial || (!values.isInitial && old != new)
-        }
+    private func shouldEmit(_ values: PairedValue<Value>) -> Bool {
+        return values.isInitial || (!values.isInitial && values.old != values.new)
+    }
 
-        guard shouldEmit(old: values.old, new: values.new) else {
+    private func applyRules(with values: PairedValue<Value>) {
+        guard shouldEmit(values) else {
             return
         }
 
+        var counter = 0
+        var pair: PairedValue<Value> = .init(old: innerValue, new: values.new, isInitial: values.isInitial)
+        repeat {
+            pair = modify(pair)
+            counter += 1
+        } while pair.old != pair.new && counter < ManagedStateCyclicDependencyMaxDepth
+
+        assert(ManagedStateCyclicDependencyWarning || counter < 100, "Cyclic dependency detected in state rules")
+
+        let newValues: PairedValue = .init(old: innerValue, new: pair.new, isInitial: values.isInitial)
+        guard shouldEmit(newValues) else {
+            return
+        }
+
+        innerValue = pair.new
+        valueSubject.send(.init(old: values.old, new: observe()))
+    }
+
+    private func modify(_ values: PairedValue<Value>) -> PairedValue<Value> {
         @UIState
         var bindable: Value = values.new
         bindable.applyRules()
 
-        let changes = DiffedValue(old: innerValue, new: $bindable.observe())
+        let changes = DiffedValue(old: values.old, new: $bindable.observe())
         rulesSubject.send(changes)
 
-        guard shouldEmit(old: innerValue, new: bindable) else {
-            return
-        }
-
-        innerValue = bindable
-        valueSubject.send(changes)
+        return .init(old: values.new, new: changes.new)
     }
 }
 
@@ -155,9 +194,18 @@ extension ManagedState: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
     public typealias Failure = Never
 
-    /// Attaches the specified subscriber to the state publisher.
+    /// Attaches a Combine subscriber to receive state changes as `DiffedValue<Value>`.
     ///
-    /// - Parameter subscriber: The subscriber to attach.
+    /// Conforms to Combine's `Publisher` protocol.
+    ///
+    /// - Parameter subscriber: A Combine subscriber to receive updates.
+    ///
+    /// ### Example
+    /// ```swift
+    /// state
+    ///     .sink { print($0) }
+    ///     .store(in: &bag)
+    /// ```
     public func receive<S>(subscriber: S) where S: Subscriber, Never == S.Failure, DiffedValue<Value> == S.Input {
         publisher.receive(subscriber: subscriber)
     }
@@ -201,17 +249,38 @@ public extension ManagedState {
     }
 }
 
+/// A container representing a state transition from an old value to a new value.
+///
+/// Used internally to track and emit changes during rule application and event propagation.
+///
+/// - Note: If `isInitial` is `true`, this indicates the very first emission.
+///
+/// ### Example
+/// ```swift
+/// let transition = PairedValue(old: nil, new: MyModel(), isInitial: true)
+/// print(transition.new)
+/// ```
 private struct PairedValue<Value> {
     let old: Value?
     let new: Value
-    let isInitial: Bool
+    var isInitial: Bool = false
 }
 
 extension PairedValue: CustomDebugStringConvertible {
+    /// A debug-friendly textual representation of the paired value.
+    ///
+    /// Displays both the old and new value states for inspection in logs or consoles.
     var debugDescription: String {
         "DiffedValue(old: \(String(describing: old)), new: \(new))"
     }
 }
 
+/// Conforms to `Equatable` when the wrapped `Value` is `Equatable`.
+///
+/// Enables comparison of state transitions and filtering of redundant updates.
 extension PairedValue: Equatable where Value: Equatable {}
+
+/// Conforms to `Sendable` when the wrapped `Value` is `Sendable`.
+///
+/// Supports safe concurrency when `ManagedState` is used in async environments.
 extension PairedValue: Sendable where Value: Sendable {}
