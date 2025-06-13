@@ -120,6 +120,74 @@ public extension Publisher where Failure == Never {
         }
     }
 
+    /// Binds changes to a specific property and reacts with a curried closure.
+    ///
+    /// This method detects changes at the specified key path and passes the parent model
+    /// into a closure that returns another closure handling the property's new value.
+    ///
+    /// - Parameters:
+    ///   - keyPath: A key path to the value being observed.
+    ///   - onChange: A curried closure taking the model and new value.
+    /// - Returns: A cancellable instance managing the binding.
+    ///
+    /// ### Example
+    /// ```swift
+    /// publisher.bind(to: \.name) { user in
+    ///     { newName in
+    ///         print("Name updated:", newName)
+    ///     }
+    /// }
+    /// ```
+    func bind<Value, NEW>(to keyPath: WritableKeyPath<Value, NEW>,
+                          onChange: @escaping (Value) -> (NEW) -> Void) -> Cancellable
+    where Value: BehavioralStateContract, Output == DiffedValue<Value>, NEW: Equatable {
+        filter { parent in
+            return parent.old?[keyPath: keyPath] != parent.new[keyPath: keyPath]
+        }
+        .sink { parent in
+            onChange(parent.new)(parent.new[keyPath: keyPath])
+        }
+    }
+
+    /// Binds changes to a specific property and triggers a deferred closure.
+    ///
+    /// This form allows logic to execute after property changes without arguments.
+    ///
+    /// - Parameters:
+    ///   - keyPath: The path to the property being tracked.
+    ///   - onChange: A closure returning another closure executed upon change.
+    /// - Returns: A cancellable binding subscription.
+    ///
+    /// ### Example
+    /// ```swift
+    /// publisher.bind(to: \.isEnabled) { model in
+    ///     {
+    ///         print("Enabled flag changed")
+    ///     }
+    /// }
+    /// ```
+    func bind<Value>(to keyPath: WritableKeyPath<Value, some Equatable>,
+                     onChange: @escaping (Value) -> () -> Void) -> Cancellable
+    where Value: BehavioralStateContract, Output == DiffedValue<Value> {
+        filter { parent in
+            return parent.old?[keyPath: keyPath] != parent.new[keyPath: keyPath]
+        }
+        .sink { parent in
+            onChange(parent.new)()
+        }
+    }
+
+    func bind<Value, NEW>(to keyPath: WritableKeyPath<Value, NEW>,
+                          onChange: @escaping (inout Value, NEW) -> Void) -> Cancellable
+    where Value: BehavioralStateContract, Output == DiffedValue<Value>, NEW: Equatable {
+        filter { parent in
+            return parent.old?[keyPath: keyPath] != parent.new[keyPath: keyPath]
+        }
+        .sink { parent in
+            onChange(&parent.new, parent.new[keyPath: keyPath])
+        }
+    }
+
     /// Binds using the full `DiffedValue` and performs a transformation.
     ///
     /// Emits the entire change object to the closure for custom handling.
@@ -149,6 +217,34 @@ public extension Publisher where Failure == Never {
         }
         .sink { parent in
             onChange(parent)
+        }
+    }
+
+    /// Binds changes to a nested value and provides the full diff to a mutating closure.
+    ///
+    /// This method provides both old and new values of a property to a closure that
+    /// mutates the parent model based on the change.
+    ///
+    /// - Parameters:
+    ///   - keyPath: A writable key path to a nested value.
+    ///   - onChange: A closure that mutates the parent using the value diff.
+    /// - Returns: A cancellable instance for the binding.
+    ///
+    /// ### Example
+    /// ```swift
+    /// publisher.bindDiffed(to: \.title) { model, titleDiff in
+    ///     model.subtitle = "Changed from \(titleDiff.old ?? "") to \(titleDiff.new)"
+    /// }
+    /// ```
+    func bindDiffed<Value, NEW>(to keyPath: WritableKeyPath<Value, NEW>,
+                                onChange: @escaping (inout Value, DiffedValue<NEW>) -> Void) -> Cancellable
+    where Value: BehavioralStateContract, Output == DiffedValue<Value>, NEW: Equatable {
+        filter { parent in
+            return parent.old?[keyPath: keyPath] != parent.new[keyPath: keyPath]
+        }
+        .sink { parent in
+            let new = DiffedValue(old: parent.old?[keyPath: keyPath], new: parent.$bindableNew.observe(keyPath))
+            onChange(&parent.new, new)
         }
     }
 }
