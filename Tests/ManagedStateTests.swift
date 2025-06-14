@@ -80,7 +80,7 @@ final class ManagedStateTests: XCTestCase {
         for _ in 0..<4 {
             let exp = expectation(description: "incrementer")
             exps.append(exp)
-            Task.detached { [_subject] in
+            DispatchQueue.global().async { [_subject] in
                 _subject.number += 1
                 exp.fulfill()
             }
@@ -190,8 +190,13 @@ private struct CounterModel: BehavioralStateContract {
     var valueFunc: Int = 0
     var valueBind: Int = 0
 
+    #if swift(>=6.0)
     nonisolated(unsafe) static var counterFunc: Int = 0
     nonisolated(unsafe) static var counterBind: Int = 0
+    #else
+    static var counterFunc: Int = 0
+    static var counterBind: Int = 0
+    #endif
 
     mutating func applyRules() {
         Self.counterFunc += 1

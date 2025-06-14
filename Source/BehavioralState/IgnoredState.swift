@@ -33,7 +33,7 @@ public struct IgnoredState<Value>: Hashable {
     /// }
     /// ```
     public let projectedValue: Int?
-    
+
     /// The underlying wrapped value.
     ///
     /// This is the value being stored and accessed through the property wrapper.
@@ -48,7 +48,7 @@ public struct IgnoredState<Value>: Hashable {
     /// model.state = State(updated: true)
     /// ```
     public var wrappedValue: Value
-    
+
     /// Creates a new `IgnoredState` with the given initial value.
     ///
     /// - Parameter wrappedValue: The value to store and access via the wrapper.
@@ -62,7 +62,7 @@ public struct IgnoredState<Value>: Hashable {
         self.wrappedValue = wrappedValue
         self.projectedValue = id
     }
-    
+
     /// Returns `true` when comparing any two `IgnoredState` instances.
     ///
     /// This makes it suitable for values that should be ignored in equality checks.
@@ -81,7 +81,7 @@ public struct IgnoredState<Value>: Hashable {
     public static func ==(lhs: Self, rhs: Self) -> Bool {
         return lhs.projectedValue == rhs.projectedValue
     }
-    
+
     /// Hashes the identifier used to distinguish this instance.
     ///
     /// If `projectedValue` is `nil`, no value is contributed to the hash.
@@ -90,7 +90,7 @@ public struct IgnoredState<Value>: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(projectedValue)
     }
-    
+
     /// Provides dynamic member access to the wrapped value.
     ///
     /// Allows direct get/set of properties on the underlying value using dot syntax.
@@ -115,7 +115,7 @@ public struct IgnoredState<Value>: Hashable {
             wrappedValue[keyPath: keyPath] = newValue
         }
     }
-    
+
     /// Dynamically calls the wrapped closure using the provided argument.
     ///
     /// This method enables `IgnoredState` to forward a single argument to a wrapped closure when `Value` is a function of type `(P) -> R`.
@@ -136,10 +136,10 @@ public struct IgnoredState<Value>: Hashable {
         guard let p = args.first else {
             fatalError("No arguments")
         }
-        
+
         return wrappedValue(p)
     }
-    
+
     /// Dynamically calls the wrapped closure when it takes no arguments and returns a value.
     ///
     /// This overload supports closures of type `() -> R`, allowing direct call syntax on the wrapped closure.

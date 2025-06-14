@@ -129,10 +129,10 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// Duplicate values are filtered using `Equatable`.
     private let valueSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
     private let rulesSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
-    
+
     private var innerValue: Value
     private let lock: NSLocking
-    
+
     /// The current model value being managed.
     ///
     /// Assigning a new value triggers rule evaluation and emits changes to subscribers.
@@ -148,12 +148,12 @@ public final class ManagedState<Value: BehavioralStateContract> {
                 if innerValue == newValue {
                     return
                 }
-                
+
                 send(.init(old: innerValue, new: newValue, isInitial: false))
             }
         }
     }
-    
+
     /// Accesses the property wrapper instance for binding or observing capabilities.
     ///
     /// Use this projected property (`$state`) to access Combine-based observation tools.
@@ -167,10 +167,10 @@ public final class ManagedState<Value: BehavioralStateContract> {
     public var projectedValue: ManagedState<Value> {
         return self
     }
-    
+
     private var bindingRules: [AnyCancellable] = []
     private var notificationRules: [Any] = []
-    
+
     /// Creates a new managed state wrapper with the specified initial value.
     ///
     /// This initializer also sets up all declared binding and notification rules and emits an initial change.
@@ -183,7 +183,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// ```
     public init(wrappedValue: Value, lock: ManagedStateLock? = nil) {
         self.innerValue = wrappedValue
-        
+
         switch lock ?? ManagedStateDefaultLock {
         case .absent:
             self.lock = AbsentLock()
@@ -192,23 +192,23 @@ public final class ManagedState<Value: BehavioralStateContract> {
         case .custom(let nSLocking):
             self.lock = nSLocking
         }
-        
+
         // initial `observe`
         @UIState
         var bindable = wrappedValue
         self.valueSubject = .init(.init(old: nil, new: $bindable.observe()))
         self.rulesSubject = .init(.init(old: nil, new: $bindable.observe()))
-        
+
         self.lock.withLock {
             // create rules
             bindingRules += createBindingRules()
             notificationRules += createAnyRules()
-            
+
             // send initial state
             send(.init(old: wrappedValue, new: innerValue, isInitial: true))
         }
     }
-    
+
     /// A publisher that emits only distinct changes to the wrapped value.
     ///
     /// Use this publisher to observe meaningful state transitions.
@@ -224,62 +224,62 @@ public final class ManagedState<Value: BehavioralStateContract> {
             .removeDuplicates()
             .eraseToAnyPublisher()
     }()
-    
+
     @AnyTokenBuilder<Any>
     private func createAnyRules() -> [Any] {
         Value.applyAnyRules(to: observe())
     }
-    
+
     @SubscriptionBuilder
     private func createBindingRules() -> [AnyCancellable] {
         Value.applyBindingRules(to: rulesSubject.eraseToAnyPublisher())
     }
-    
+
     private var prevValues: PairedValue<Value>?
     private func send(_ values: PairedValue<Value>) {
         if values == prevValues {
             return
         }
         prevValues = values
-        
+
         applyRules(with: values)
     }
-    
+
     private func shouldEmit(_ values: PairedValue<Value>) -> Bool {
         return values.isInitial || (!values.isInitial && values.old != values.new)
     }
-    
+
     private func applyRules(with values: PairedValue<Value>) {
         guard shouldEmit(values) else {
             return
         }
-        
+
         var counter = 0
         var pair: PairedValue<Value> = .init(old: innerValue, new: values.new, isInitial: values.isInitial)
         repeat {
             pair = modify(pair)
             counter += 1
         } while pair.old != pair.new && counter < ManagedStateCyclicDependencyMaxDepth
-        
+
         assert(ManagedStateCyclicDependencyWarning || counter < 100, "Cyclic dependency detected in state rules")
-        
+
         let newValues: PairedValue = .init(old: innerValue, new: pair.new, isInitial: values.isInitial)
         guard shouldEmit(newValues) else {
             return
         }
-        
+
         innerValue = pair.new
         valueSubject.send(.init(old: values.old, new: observe()))
     }
-    
+
     private func modify(_ values: PairedValue<Value>) -> PairedValue<Value> {
         @UIState
         var bindable: Value = values.new
         bindable.applyRules()
-        
+
         let changes = DiffedValue(old: values.old, new: $bindable.observe())
         rulesSubject.send(changes)
-        
+
         return .init(old: values.new, new: changes.new)
     }
 }
@@ -293,7 +293,7 @@ extension ManagedState: SafeBinding {}
 extension ManagedState: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
     public typealias Failure = Never
-    
+
     /// Attaches a Combine subscriber to receive state changes as `DiffedValue<Value>`.
     ///
     /// Conforms to Combine's `Publisher` protocol.
@@ -326,7 +326,7 @@ public extension ManagedState {
     subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> UIBinding<V> {
         return observe(keyPath)
     }
-    
+
     /// Accesses and modifies properties of the wrapped value using dynamic member lookup.
     ///
     /// This subscript allows direct interaction with the stored value as if it were a normal instance.
@@ -395,7 +395,7 @@ private final class AbsentLock: NSLocking {
     func lock() {
         // no-op
     }
-    
+
     func unlock() {
         // no-op
     }
