@@ -1,23 +1,39 @@
 import Foundation
 
-/// A property wrapper that marks a value as equatable by always returning `true` in comparisons.
+/// A property wrapper that ignores its value in equality and hashing comparisons.
 ///
-/// `IgnoredState` is useful when a value should not affect `Equatable` conformance, such as in diffable UI models
-/// or cached data that should not trigger re-renders. This wrapper also supports `@dynamicMemberLookup`
-/// allowing direct access to members of the wrapped value.
+/// Use `IgnoredState` to wrap values that should not influence `Equatable` or `Hashable` behavior,
+/// such as transient or cached properties in UI models. The wrapper supports dynamic member access
+/// and callable closures.
 ///
-/// - Note: `IgnoredState` always returns `true` for equality, regardless of actual content.
+/// - Important: All instances of `IgnoredState` are considered equal unless differentiated using the optional `id`.
 ///
 /// ### Example
 /// ```swift
 /// struct ViewModel: Equatable {
-///     @IgnoredState var cache = CachedData()
+///     @IgnoredState var transientCache = DataCache()
 /// }
 /// ```
 @propertyWrapper
 @dynamicMemberLookup
 @dynamicCallable
-public struct IgnoredState<Value>: Equatable {
+public struct IgnoredState<Value>: Hashable {
+    /// An optional identifier associated with the ignored value.
+    ///
+    /// Use this identifier to differentiate `IgnoredState` instances during hashing or equality checks,
+    /// especially when the wrapped value should be excluded from comparison logic.
+    ///
+    /// - Note: This value is used as the hash and equality key.
+    ///
+    /// ### Example
+    /// ```swift
+    /// struct ViewModel: Hashable {
+    ///     @IgnoredState(id: 1) var a = Value()
+    ///     @IgnoredState(id: 2) var b = Value()
+    /// }
+    /// ```
+    public let projectedValue: Int?
+    
     /// The underlying wrapped value.
     ///
     /// This is the value being stored and accessed through the property wrapper.
@@ -42,13 +58,19 @@ public struct IgnoredState<Value>: Equatable {
     /// let ignored = IgnoredState(wrappedValue: "internal cache")
     /// print(ignored.wrappedValue)
     /// ```
-    public init(wrappedValue: Value) {
+    public init(wrappedValue: Value, id: Int? = nil) {
         self.wrappedValue = wrappedValue
+        self.projectedValue = id
     }
     
     /// Returns `true` when comparing any two `IgnoredState` instances.
     ///
     /// This makes it suitable for values that should be ignored in equality checks.
+    ///
+    /// - Parameters:
+    ///   - lhs: The left-hand side `IgnoredState` instance.
+    ///   - rhs: The right-hand side `IgnoredState` instance.
+    /// - Returns: `true` if the identifiers are equal, otherwise `false`.
     ///
     /// ### Example
     /// ```
@@ -57,7 +79,16 @@ public struct IgnoredState<Value>: Equatable {
     /// print(a == b) // true
     /// ```
     public static func ==(lhs: Self, rhs: Self) -> Bool {
-        return true
+        return lhs.projectedValue == rhs.projectedValue
+    }
+    
+    /// Hashes the identifier used to distinguish this instance.
+    ///
+    /// If `projectedValue` is `nil`, no value is contributed to the hash.
+    ///
+    /// - Parameter hasher: The hasher to use when combining the components of this instance.
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(projectedValue)
     }
     
     /// Provides dynamic member access to the wrapped value.

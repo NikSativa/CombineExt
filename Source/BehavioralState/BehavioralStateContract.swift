@@ -50,24 +50,24 @@ public protocol BehavioralStateContract: Equatable {
     @SubscriptionBuilder
     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable]
 
-    /// Provides a default set of notification/event handling rules for the conforming model.
+    /// Applies global event or notification listeners to the model.
     ///
-    /// This method is used to listen for system notifications, app lifecycle events, or other non-state-driven actions.
-    /// Conforming models may override this to register listeners and return corresponding tokens.
+    /// Use this method to observe external inputs such as lifecycle events, push notifications,
+    /// or system broadcasts, and react accordingly.
     ///
-    /// - Parameter state: A binding to the current model state.
-    /// - Returns: An array of notification tokens or other external observers.
+    /// - Parameter state: A binding proxy to the current model value.
+    /// - Returns: An array of observer tokens or cancellables.
     ///
     /// ### Example
     /// ```swift
-    /// struct LifecycleAwareModel: BehavioralStateContract {
+    /// struct AppLifecycleModel: BehavioralStateContract {
     ///     func applyRules() {}
     ///
     ///     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
     ///         [
     ///             NotificationCenter.default
-    ///                 .publisher(for: UIApplication.didEnterBackgroundNotification)
-    ///                 .sink { _ in print("App moved to background") }
+    ///                 .publisher(for: UIApplication.didBecomeActiveNotification)
+    ///                 .sink { _ in print("App became active") }
     ///         ]
     ///     }
     /// }
@@ -114,22 +114,20 @@ public extension UIBinding where Value: BehavioralStateContract {
     ///
     /// ### Example
     /// ```swift
-    /// binding.applyNestedRules(for: \.profile)
+    /// binding.applyNestedRules(to: \.profile)
     /// ```
     @AnyTokenBuilder<Any>
-    func applyNestedRules<NEW>(for keyPath: WritableKeyPath<Value, NEW>) -> [Any]
+    func applyNestedRules<NEW>(to keyPath: WritableKeyPath<Value, NEW>) -> [Any]
     where NEW: BehavioralStateContract {
         let state: UIBinding<NEW> = observe(keyPath)
         NEW.applyAnyRules(to: state)
     }
 }
 
-/// Makes optional types conform to `BehavioralStateContract` when their wrapped type does.
+/// Extends `Optional` to conform to `BehavioralStateContract` when its wrapped type does.
 ///
-/// This allows optional submodels to participate in binding and notification rules
-/// as long as they are not `nil`.
-///
-/// This is useful in hierarchical or compositional state trees.
+/// This enables optional submodels to participate in rule-based state updates and notification handling.
+/// Nested `nil` values are treated as no-ops, allowing safe propagation in model hierarchies.
 extension Optional: BehavioralStateContract where Wrapped: BehavioralStateContract {
     /// Applies internal business logic and local transformations to the optional model’s state.
     ///
@@ -147,23 +145,18 @@ extension Optional: BehavioralStateContract where Wrapped: BehavioralStateContra
     /// A default implementation of binding rules for optional types.
     ///
     /// When the optional value is `nil`, no binding rules are applied.
-    /// This satisfies the protocol requirement for `Optional<Wrapped>`.
     ///
-    /// ### Example
-    /// ```swift
-    /// Optional<ChildModel>.applyBindingRules(to: publisher)
-    /// ```
+    /// - Parameter state: A publisher that emits diffs for the optional wrapped model.
+    /// - Returns: An empty array when the wrapped value is `nil`.
     @SubscriptionBuilder
     public static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {}
 
-    /// A default implementation of generalized notification rules for optional types.
+    /// A default implementation of notification rules for optional types.
     ///
-    /// When the optional value is `nil`, no notification rules are applied.
+    /// When the optional value is `nil`, no rules are applied.
     ///
-    /// ### Example
-    /// ```swift
-    /// Optional<ChildModel>.applyAnyRules(to: binding)
-    /// ```
+    /// - Parameter state: A binding for the optional wrapped model.
+    /// - Returns: An empty array when the wrapped value is `nil`.
     @AnyTokenBuilder<Any>
     public static func applyAnyRules(to state: UIBinding<Wrapped?>) -> [Any] {}
 

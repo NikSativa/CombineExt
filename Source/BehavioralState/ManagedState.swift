@@ -1,23 +1,104 @@
 import Combine
 import Foundation
 
+#if swift(>=6.0)
 /// A global flag that enables or disables cyclic dependency assertions in state rules.
 ///
-/// When set to `true`, an assertion will be triggered if rule evaluation loops exceed a safe limit.
-/// Defaults to `true`.
-#if swift(>=6.0)
+/// When set to `true`, an assertion is triggered if the number of rule application loops
+/// exceeds `ManagedStateCyclicDependencyMaxDepth`. This helps detect unintentional infinite update cycles,
+/// such as those caused by improperly configured state feedback loops.
+///
+/// - Note: Defaults to `true`.
+///
+/// ### Example
+/// ```swift
+/// ManagedStateCyclicDependencyWarning = false // Disable warning in tests
+/// ```
 public nonisolated(unsafe) var ManagedStateCyclicDependencyWarning: Bool = true
-/// The maximum number of times state rules may be reapplied before considering it a cyclic dependency.
+/// The maximum number of rule reapplication cycles allowed before assuming a cyclic dependency.
 ///
-/// Defaults to `100`. If exceeded, and `ManagedStateCyclicDependencyWarning` is `true`, an assertion is triggered.
+/// If this threshold is exceeded while `ManagedStateCyclicDependencyWarning` is enabled,
+/// an assertion failure is triggered to prevent infinite loops.
+///
+/// - Note: Defaults to `100`.
+///
+/// ### Example
+/// ```swift
+/// ManagedStateCyclicDependencyMaxDepth = 50 // Tighter threshold for specific workflows
+/// ```
 public nonisolated(unsafe) var ManagedStateCyclicDependencyMaxDepth: Int = 100
-#else
-public var ManagedStateCyclicDependencyWarning: Bool = true
-/// The maximum number of times state rules may be reapplied before considering it a cyclic dependency.
+/// The default locking strategy used by `ManagedState` instances.
 ///
-/// Defaults to `100`. If exceeded, and `ManagedStateCyclicDependencyWarning` is `true`, an assertion is triggered.
+/// When initializing `ManagedState` without providing an explicit lock, this value determines
+/// the locking behavior. You can assign `.absent`, `.synced`, or `.custom(...)` to configure the behavior globally.
+///
+/// - Note: Defaults to `.synced`, which uses a recursive lock for thread safety.
+///
+/// ### Example
+/// ```swift
+/// ManagedStateDefaultLock = .absent
+/// @ManagedState var model = MyModel() // will use no locking
+/// ```
+public nonisolated(unsafe) var ManagedStateDefaultLock: ManagedStateLock = .synced
+#else
+/// A global flag that enables or disables cyclic dependency assertions in state rules.
+///
+/// When set to `true`, an assertion is triggered if the number of rule application loops
+/// exceeds `ManagedStateCyclicDependencyMaxDepth`. This helps detect unintentional infinite update cycles,
+/// such as those caused by improperly configured state feedback loops.
+///
+/// - Note: Defaults to `true`.
+///
+/// ### Example
+/// ```swift
+/// ManagedStateCyclicDependencyWarning = false // Disable warning in tests
+/// ```
+public var ManagedStateCyclicDependencyWarning: Bool = true
+/// The maximum number of rule reapplication cycles allowed before assuming a cyclic dependency.
+///
+/// If this threshold is exceeded while `ManagedStateCyclicDependencyWarning` is enabled,
+/// an assertion failure is triggered to prevent infinite loops.
+///
+/// - Note: Defaults to `100`.
+///
+/// ### Example
+/// ```swift
+/// ManagedStateCyclicDependencyMaxDepth = 50 // Tighter threshold for specific workflows
+/// ```
 public var ManagedStateCyclicDependencyMaxDepth: Int = 100
+/// The default locking strategy used by `ManagedState` instances.
+///
+/// When initializing `ManagedState` without providing an explicit lock, this value determines
+/// the locking behavior. You can assign `.absent`, `.synced`, or `.custom(...)` to configure the behavior globally.
+///
+/// - Note: Defaults to `.synced`, which uses a recursive lock for thread safety.
+///
+/// ### Example
+/// ```swift
+/// ManagedStateDefaultLock = .absent
+/// @ManagedState var model = MyModel() // will use no locking
+/// ```
+public var ManagedStateDefaultLock: ManagedStateLock = .synced
 #endif
+
+/// Defines the locking mechanism used within a `ManagedState` instance.
+///
+/// Use this enum to configure how thread safety is enforced when reading and writing state.
+///
+/// - `absent`: No locking is performed. Not thread-safe.
+/// - `synced`: Uses an internal recursive lock for thread safety. Default.
+/// - `custom`: Provides a custom lock implementation.
+///
+/// ### Example
+/// ```swift
+/// let model = ManagedState(wrappedValue: state, lock: .custom(NSRecursiveLock()))
+/// ```
+public enum ManagedStateLock {
+    case absent
+    case synced
+    case custom(NSLocking)
+}
+
 /// A property wrapper that manages reactive state conforming to `BehavioralStateContract`.
 ///
 /// `ManagedState` offers automatic rule binding, dynamic UI syncing, and observable state changes using Combine.
@@ -48,27 +129,31 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// Duplicate values are filtered using `Equatable`.
     private let valueSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
     private let rulesSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
-    private let changeEventStream: EventSubject<PairedValue<Value>> = .init()
-
+    
     private var innerValue: Value
-
+    private let lock: NSLocking
+    
     /// The current model value being managed.
     ///
     /// Assigning a new value triggers rule evaluation and emits changes to subscribers.
     /// If the value is equal to the existing one, no event is emitted.
     public var wrappedValue: Value {
         get {
-            return innerValue
+            lock.withLock {
+                return innerValue
+            }
         }
         set {
-            if innerValue == newValue {
-                return
+            lock.withLock {
+                if innerValue == newValue {
+                    return
+                }
+                
+                send(.init(old: innerValue, new: newValue, isInitial: false))
             }
-
-            changeEventStream.send(.init(old: innerValue, new: newValue, isInitial: false))
         }
     }
-
+    
     /// Accesses the property wrapper instance for binding or observing capabilities.
     ///
     /// Use this projected property (`$state`) to access Combine-based observation tools.
@@ -82,10 +167,10 @@ public final class ManagedState<Value: BehavioralStateContract> {
     public var projectedValue: ManagedState<Value> {
         return self
     }
-
+    
     private var bindingRules: [AnyCancellable] = []
     private var notificationRules: [Any] = []
-
+    
     /// Creates a new managed state wrapper with the specified initial value.
     ///
     /// This initializer also sets up all declared binding and notification rules and emits an initial change.
@@ -96,23 +181,34 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// ```swift
     /// @ManagedState var model = MyModel()
     /// ```
-    public init(wrappedValue: Value) {
+    public init(wrappedValue: Value, lock: ManagedStateLock? = nil) {
         self.innerValue = wrappedValue
-
+        
+        switch lock ?? ManagedStateDefaultLock {
+        case .absent:
+            self.lock = AbsentLock()
+        case .synced:
+            self.lock = NSRecursiveLock()
+        case .custom(let nSLocking):
+            self.lock = nSLocking
+        }
+        
         // initial `observe`
         @UIState
         var bindable = wrappedValue
         self.valueSubject = .init(.init(old: nil, new: $bindable.observe()))
         self.rulesSubject = .init(.init(old: nil, new: $bindable.observe()))
-
-        // create rules
-        bindingRules += createBindingRules()
-        notificationRules += createAnyRules()
-
-        // send initial state
-        changeEventStream.send(.init(old: wrappedValue, new: innerValue, isInitial: true))
+        
+        self.lock.withLock {
+            // create rules
+            bindingRules += createBindingRules()
+            notificationRules += createAnyRules()
+            
+            // send initial state
+            send(.init(old: wrappedValue, new: innerValue, isInitial: true))
+        }
     }
-
+    
     /// A publisher that emits only distinct changes to the wrapped value.
     ///
     /// Use this publisher to observe meaningful state transitions.
@@ -128,63 +224,67 @@ public final class ManagedState<Value: BehavioralStateContract> {
             .removeDuplicates()
             .eraseToAnyPublisher()
     }()
-
+    
     @AnyTokenBuilder<Any>
     private func createAnyRules() -> [Any] {
         Value.applyAnyRules(to: observe())
     }
-
+    
     @SubscriptionBuilder
     private func createBindingRules() -> [AnyCancellable] {
-        changeEventStream
-            .removeDuplicates()
-            .sink { [unowned self] new in
-                applyRules(with: new)
-            }
-
         Value.applyBindingRules(to: rulesSubject.eraseToAnyPublisher())
     }
-
+    
+    private var prevValues: PairedValue<Value>?
+    private func send(_ values: PairedValue<Value>) {
+        if values == prevValues {
+            return
+        }
+        prevValues = values
+        
+        applyRules(with: values)
+    }
+    
     private func shouldEmit(_ values: PairedValue<Value>) -> Bool {
         return values.isInitial || (!values.isInitial && values.old != values.new)
     }
-
+    
     private func applyRules(with values: PairedValue<Value>) {
         guard shouldEmit(values) else {
             return
         }
-
+        
         var counter = 0
         var pair: PairedValue<Value> = .init(old: innerValue, new: values.new, isInitial: values.isInitial)
         repeat {
             pair = modify(pair)
             counter += 1
         } while pair.old != pair.new && counter < ManagedStateCyclicDependencyMaxDepth
-
+        
         assert(ManagedStateCyclicDependencyWarning || counter < 100, "Cyclic dependency detected in state rules")
-
+        
         let newValues: PairedValue = .init(old: innerValue, new: pair.new, isInitial: values.isInitial)
         guard shouldEmit(newValues) else {
             return
         }
-
+        
         innerValue = pair.new
         valueSubject.send(.init(old: values.old, new: observe()))
     }
-
+    
     private func modify(_ values: PairedValue<Value>) -> PairedValue<Value> {
         @UIState
         var bindable: Value = values.new
         bindable.applyRules()
-
+        
         let changes = DiffedValue(old: values.old, new: $bindable.observe())
         rulesSubject.send(changes)
-
+        
         return .init(old: values.new, new: changes.new)
     }
 }
 
-/// Conformance to `SafeBinding` for type-safe UI binding access.
+/// Enables use of `ManagedState` with views and systems that support `SafeBinding`.
 extension ManagedState: SafeBinding {}
 
 /// Conformance to `Publisher` for `DiffedValue<Value>` output.
@@ -193,7 +293,7 @@ extension ManagedState: SafeBinding {}
 extension ManagedState: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
     public typealias Failure = Never
-
+    
     /// Attaches a Combine subscriber to receive state changes as `DiffedValue<Value>`.
     ///
     /// Conforms to Combine's `Publisher` protocol.
@@ -226,7 +326,7 @@ public extension ManagedState {
     subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> UIBinding<V> {
         return observe(keyPath)
     }
-
+    
     /// Accesses and modifies properties of the wrapped value using dynamic member lookup.
     ///
     /// This subscript allows direct interaction with the stored value as if it were a normal instance.
@@ -249,9 +349,12 @@ public extension ManagedState {
     }
 }
 
-/// A container representing a state transition from an old value to a new value.
+/// Declares that `ManagedState` is safe to use in concurrent contexts, despite not enforcing value-level checks.
+extension ManagedState: @unchecked Sendable {}
+
+/// Represents a transition between two values of the same type.
 ///
-/// Used internally to track and emit changes during rule application and event propagation.
+/// Used internally by `ManagedState` to track and compare state changes.
 ///
 /// - Note: If `isInitial` is `true`, this indicates the very first emission.
 ///
@@ -284,3 +387,16 @@ extension PairedValue: Equatable where Value: Equatable {}
 ///
 /// Supports safe concurrency when `ManagedState` is used in async environments.
 extension PairedValue: Sendable where Value: Sendable {}
+
+/// A no-op locking mechanism that performs no synchronization.
+///
+/// Useful in single-threaded or testing environments where locking is unnecessary.
+private final class AbsentLock: NSLocking {
+    func lock() {
+        // no-op
+    }
+    
+    func unlock() {
+        // no-op
+    }
+}

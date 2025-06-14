@@ -1,7 +1,7 @@
 import CombineExt
 import Foundation
 
-struct TestModel: BehavioralStateContract, CustomDebugStringConvertible {
+struct TestModel: Hashable, BehavioralStateContract, CustomDebugStringConvertible {
     var number: Int = 0
     var binding: Int = 0
     var text: String = "initial"
@@ -55,3 +55,5 @@ extension TestModel {
         self.text = "\(number)"
     }
 }
+
+extension TestModel: @unchecked Sendable {}

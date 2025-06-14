@@ -76,21 +76,29 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertEqual(texts, ["0"])
 
         // actions
-        subject.number += 1
-        subject.number += 1
-        subject.number += 1
-        subject.number += 1
+        var exps: [XCTestExpectation] = []
+        for _ in 0..<4 {
+            let exp = expectation(description: "incrementer")
+            exps.append(exp)
+            Task.detached { [_subject] in
+                _subject.number += 1
+                exp.fulfill()
+            }
+        }
 
-        XCTAssertEqual(subject.number, 4)
-        XCTAssertEqual(subject.text, "4")
+        await fulfillment(of: exps)
 
-        XCTAssertEqual(models, [
+        XCTAssertEqual(numbers.count, 5)
+        XCTAssertTrue(numbers.contains(subject.number))
+        XCTAssertTrue(texts.contains(subject.text))
+
+        XCTAssertEqual(Set(models), Set([
             .init(number: 0, binding: 0),
             .init(number: 1, binding: 1),
             .init(number: 2, binding: 2),
             .init(number: 3, binding: 3),
             .init(number: 4, binding: 4)
-        ])
+        ]))
         XCTAssertEqual(numbers, [0, 1, 2, 3, 4])
         XCTAssertEqual(binding, [0, 1, 2, 3, 4])
         XCTAssertEqual(texts, ["0", "1", "2", "3", "4"])
