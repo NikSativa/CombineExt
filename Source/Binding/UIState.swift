@@ -71,7 +71,7 @@ public final class UIState<Value: Equatable> {
 }
 
 extension UIState: SafeBinding {}
-/// Conformance to the `Publisher` protocol, enabling `UIState` to emit value changes using Combine.
+
 extension UIState: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
     public typealias Failure = Never
@@ -131,16 +131,37 @@ public extension UIState where Value: ExpressibleByDictionaryLiteral {
     }
 }
 
-/// Compares the wrapped values of two `UIState` instances.
-///
-/// Returns `true` if both wrapped values are equal.
-extension UIState: Equatable {
+extension UIState: Equatable where Value: Equatable {
     public static func ==(lhs: UIState<Value>, rhs: UIState<Value>) -> Bool {
         return lhs.wrappedValue == rhs.wrappedValue
     }
 }
 
-// Marks `UIState` as `@unchecked Sendable` when supported by the Swift version.
+extension UIState: Hashable where Value: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(wrappedValue)
+    }
+}
+
+extension UIState: CustomStringConvertible where Value: CustomStringConvertible {
+    public var description: String {
+        return wrappedValue.description
+    }
+}
+
+extension UIState: CustomDebugStringConvertible where Value: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        return wrappedValue.debugDescription
+    }
+}
+
+@available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
+extension UIState: CustomLocalizedStringResourceConvertible where Value: CustomLocalizedStringResourceConvertible {
+    public var localizedStringResource: LocalizedStringResource {
+        return wrappedValue.localizedStringResource
+    }
+}
+
 #if swift(>=6.0)
 extension UIState: @unchecked Sendable {}
 #endif

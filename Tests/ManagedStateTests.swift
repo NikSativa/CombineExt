@@ -60,7 +60,7 @@ final class ManagedStateTests: XCTestCase {
     @MainActor
     func testClosureCapturing() {
         let some: () -> Void = { [_subject] in
-            print("ignore me. \(_subject.number)")
+            print("ignore me. \(_subject.number as Int)")
         }
         some()
     }

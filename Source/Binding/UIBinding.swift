@@ -136,25 +136,12 @@ public struct UIBinding<Value> {
     }
 }
 
-/// Conforms `UIBinding` to `SafeBinding` to support safe collection access.
-///
-/// This enables usage like:
-///
-/// ```swift
-/// let value = binding[safe: 2]
-/// ```
 extension UIBinding: SafeBinding {}
 
-/// Conformance to `Publisher`, allowing this binding to emit value changes using Combine.
-///
-/// This makes `UIBinding` directly usable with Combine subscribers and operators.
 extension UIBinding: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
     public typealias Failure = Never
 
-    /// Attaches the specified subscriber to receive value changes from this binding.
-    ///
-    /// - Parameter subscriber: The subscriber to register.
     public func receive<S>(subscriber: S) where S: Subscriber, Never == S.Failure, DiffedValue<Value> == S.Input {
         publisher.receive(subscriber: subscriber)
     }
@@ -199,24 +186,37 @@ public extension UIBinding {
     }
 }
 
-/// Conformance to `Equatable` when the wrapped value is equatable.
-///
-/// Allows comparison of two bindings based on their current values.
 extension UIBinding: Equatable where Value: Equatable {
-    /// Returns whether two bindings currently hold equal values.
-    ///
-    /// - Parameters:
-    ///   - lhs: A binding to compare.
-    ///   - rhs: Another binding to compare.
-    /// - Returns: `true` if both bindings hold equal wrapped values; otherwise, `false`.
     public static func ==(lhs: UIBinding<Value>, rhs: UIBinding<Value>) -> Bool {
         return lhs.wrappedValue == rhs.wrappedValue
     }
 }
 
+extension UIBinding: Hashable where Value: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(wrappedValue)
+    }
+}
+
+extension UIBinding: CustomStringConvertible where Value: CustomStringConvertible {
+    public var description: String {
+        return wrappedValue.description
+    }
+}
+
+extension UIBinding: CustomDebugStringConvertible where Value: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        return wrappedValue.debugDescription
+    }
+}
+
+@available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
+extension UIBinding: CustomLocalizedStringResourceConvertible where Value: CustomLocalizedStringResourceConvertible {
+    public var localizedStringResource: LocalizedStringResource {
+        return wrappedValue.localizedStringResource
+    }
+}
+
 #if swift(>=6.0)
-/// Conforms `UIBinding` to `Sendable` for safe use in concurrent contexts.
-///
-/// This allows bindings to be used in structured concurrency when their contents are safe.
 extension UIBinding: @unchecked Sendable {}
 #endif

@@ -93,9 +93,28 @@ public var ManagedStateDefaultLock: ManagedStateLock = .synced
 /// ```swift
 /// let model = ManagedState(wrappedValue: state, lock: .custom(NSRecursiveLock()))
 /// ```
+/// Defines the locking mechanism used within a `ManagedState` instance.
+///
+/// Use this enum to configure how thread safety is enforced when reading and writing state.
+///
+/// - `absent`: No locking is performed. Not thread-safe.
+/// - `synced`: Uses an internal recursive lock for thread safety. Default.
+/// - `custom`: Provides a custom lock implementation.
+///
+/// ### Example
+/// ```swift
+/// let model = ManagedState(wrappedValue: state, lock: .custom(NSRecursiveLock()))
+/// ```
 public enum ManagedStateLock {
+    /// No synchronization. Use only when thread-safety is not a concern.
     case absent
+
+    /// Uses a recursive lock to ensure thread-safety during state access and updates.
     case synced
+
+    /// Provides a custom locking mechanism conforming to `NSLocking`.
+    ///
+    /// - Parameter lock: An object conforming to `NSLocking`, such as `NSRecursiveLock` or `NSLock`.
     case custom(NSLocking)
 }
 
@@ -284,28 +303,12 @@ public final class ManagedState<Value: BehavioralStateContract> {
     }
 }
 
-/// Enables use of `ManagedState` with views and systems that support `SafeBinding`.
 extension ManagedState: SafeBinding {}
 
-/// Conformance to `Publisher` for `DiffedValue<Value>` output.
-///
-/// Allows the `ManagedState` to be used directly in Combine pipelines.
 extension ManagedState: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
     public typealias Failure = Never
 
-    /// Attaches a Combine subscriber to receive state changes as `DiffedValue<Value>`.
-    ///
-    /// Conforms to Combine's `Publisher` protocol.
-    ///
-    /// - Parameter subscriber: A Combine subscriber to receive updates.
-    ///
-    /// ### Example
-    /// ```swift
-    /// state
-    ///     .sink { print($0) }
-    ///     .store(in: &bag)
-    /// ```
     public func receive<S>(subscriber: S) where S: Subscriber, Never == S.Failure, DiffedValue<Value> == S.Input {
         publisher.receive(subscriber: subscriber)
     }
@@ -349,19 +352,53 @@ public extension ManagedState {
     }
 }
 
-/// Declares that `ManagedState` is safe to use in concurrent contexts, despite not enforcing value-level checks.
+extension ManagedState: Equatable where Value: Equatable {
+    public static func ==(lhs: ManagedState<Value>, rhs: ManagedState<Value>) -> Bool {
+        return lhs.wrappedValue == rhs.wrappedValue
+    }
+}
+
+extension ManagedState: Hashable where Value: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(wrappedValue)
+    }
+}
+
+extension ManagedState: CustomStringConvertible where Value: CustomStringConvertible {
+    public var description: String {
+        return wrappedValue.description
+    }
+}
+
+extension ManagedState: CustomDebugStringConvertible where Value: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        return wrappedValue.debugDescription
+    }
+}
+
+@available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
+extension ManagedState: CustomLocalizedStringResourceConvertible where Value: CustomLocalizedStringResourceConvertible {
+    public var localizedStringResource: LocalizedStringResource {
+        return wrappedValue.localizedStringResource
+    }
+}
+
 extension ManagedState: @unchecked Sendable {}
 
 /// Represents a transition between two values of the same type.
 ///
-/// Used internally by `ManagedState` to track and compare state changes.
+/// `PairedValue` is used internally to track state changes. It captures both the old and new values,
+/// and whether the transition was the initial emission.
 ///
-/// - Note: If `isInitial` is `true`, this indicates the very first emission.
+/// - Parameters:
+///   - old: The previous value, or `nil` if this is the first emission.
+///   - new: The new value after the change.
+///   - isInitial: A Boolean value indicating whether this is the initial emission.
 ///
 /// ### Example
 /// ```swift
-/// let transition = PairedValue(old: nil, new: MyModel(), isInitial: true)
-/// print(transition.new)
+/// let diff = PairedValue(old: nil, new: state, isInitial: true)
+/// print("Initial:", diff.new)
 /// ```
 private struct PairedValue<Value> {
     let old: Value?
@@ -378,25 +415,16 @@ extension PairedValue: CustomDebugStringConvertible {
     }
 }
 
-/// Conforms to `Equatable` when the wrapped `Value` is `Equatable`.
-///
-/// Enables comparison of state transitions and filtering of redundant updates.
 extension PairedValue: Equatable where Value: Equatable {}
-
-/// Conforms to `Sendable` when the wrapped `Value` is `Sendable`.
-///
-/// Supports safe concurrency when `ManagedState` is used in async environments.
 extension PairedValue: Sendable where Value: Sendable {}
 
 /// A no-op locking mechanism that performs no synchronization.
 ///
-/// Useful in single-threaded or testing environments where locking is unnecessary.
+/// Use `AbsentLock` in single-threaded or testing contexts where locking is not needed.
 private final class AbsentLock: NSLocking {
-    func lock() {
-        // no-op
-    }
+    /// No-op lock.
+    func lock() {}
 
-    func unlock() {
-        // no-op
-    }
+    /// No-op unlock.
+    func unlock() {}
 }

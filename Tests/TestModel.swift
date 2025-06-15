@@ -13,7 +13,7 @@ struct TestModel: Hashable, BehavioralStateContract, CustomDebugStringConvertibl
     var getClosure: () -> Int = { 42 }
 
     @IgnoredState
-    var setClosure: (Int) -> Void = { t in print(t) }
+    var setClosure: (Int) -> Void = { _ in }
 
     @IgnoredState
     var getSetClosure: (Int) -> Int = { t in t + 1 }
@@ -30,8 +30,8 @@ struct TestModel: Hashable, BehavioralStateContract, CustomDebugStringConvertibl
 
         voidClosure()
         setClosure(24)
-        print(getClosure())
-        print(getSetClosure(25))
+        _ = getClosure()
+        _ = getSetClosure(25)
 
         ignoredValue += 1
     }

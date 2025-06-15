@@ -1,42 +1,44 @@
 import Combine
 import Foundation
 
-/// A protocol for publishers that expose bindable and observable state using `DiffedValue`.
+/// A protocol that combines a bindable property interface with Combine's `Publisher` interface.
 ///
-/// Conforming types allow two-way data binding via `UIBinding` and enable reactive
-/// state updates with Combine. The protocol ensures that values can be read and
-/// written, and that changes are emitted through Combine publishers.
+/// `SafeBinding` allows clients to observe and react to changes in a wrapped value through a `Publisher`,
+/// while also providing access to the current value via `wrappedValue`. It is typically used
+/// with property wrappers such as `@UIState` or `@ManagedState` to support reactive UIs.
 ///
-/// Types conforming to `SafeBinding` typically represent some form of reactive state,
-/// such as `@ManagedState`, `@UIState`, or custom wrappers that track changes and publish them.
+/// Conforming types must emit `DiffedValue` objects representing both old and new values.
 ///
-/// - Note: `Output` must be `DiffedValue<Value>`, and `Failure` must be `Never`.
+/// ### Conformance Requirements
+/// - Must be a Combine `Publisher` with `Output == DiffedValue<Value>` and `Failure == Never`.
+/// - Must support getting and setting the `wrappedValue`.
+/// - Must conform to `CustomReflectable`.
 ///
 /// ### Example
 /// ```swift
-/// struct MyModel: BehavioralStateContract { ... }
-/// @ManagedState var state = MyModel()
+/// @ManagedState var name = "Initial"
 ///
-/// $state.justNew().sink { newValue in
-///     print("State changed:", newValue)
+/// $name.justNew().sink { newValue in
+///     print("New value is", newValue)
 /// }
 /// ```
-public protocol SafeBinding where Self: Publisher, Failure == Never, Output == DiffedValue<Value> {
-    /// The type of the value being observed and mutated.
+public protocol SafeBinding: CustomReflectable
+where Self: Publisher, Failure == Never, Output == DiffedValue<Value> {
+    /// The type of the underlying value being observed and mutated.
     ///
-    /// This is the model or state type that the binding operates on.
+    /// Conforming types use `Value` to represent the state or model exposed via this binding.
     associatedtype Value
 
-    /// The current value associated with the binding.
+    /// Accesses the current value of the binding.
     ///
-    /// Use this property to read or write the current state. Writing a new value
-    /// triggers observation and notifies any active bindings or observers.
+    /// You can read the current value or assign a new one. Assigning a new value emits a `DiffedValue`
+    /// containing both the previous and new values.
     ///
     /// ### Example
     /// ```swift
-    /// @ManagedState var model = MyModel()
-    /// $model.wrappedValue = MyModel(updated: true)
-    /// print($model.wrappedValue)
+    /// @UIState var count = 0
+    /// $count.wrappedValue += 1
+    /// print($count.wrappedValue)
     /// ```
     var wrappedValue: Value { get nonmutating set }
 }
@@ -137,12 +139,38 @@ public extension SafeBinding {
     func observe() -> UIBinding<Value> {
         return observe(\.self)
     }
+
+    /// CustomReflectable conformance.
+    ///
+    /// Provides a mirror reflecting the wrapped value.
+    var customMirror: Mirror {
+        return .init(reflecting: wrappedValue)
+    }
 }
 
 /// Extension to `SafeBinding` for publishers whose wrapped value is a mutable collection.
 ///
 /// Provides helpers for accessing or binding to indexed elements safely or unsafely.
 public extension SafeBinding where Value: MutableCollection {
+    /// Creates an array of `UIBinding` elements corresponding to each index in the wrapped collection.
+    ///
+    /// This method safely maps each valid index to a binding using `safe(_:default:)`.
+    ///
+    /// - Returns: An array of `UIBinding` values, one for each index in the collection.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @UIState var items = ["A", "B", "C"]
+    /// let bindings = $items.bindingArray()
+    /// bindings[1].wrappedValue = "Updated"
+    /// print($items.wrappedValue[1]) // "Updated"
+    /// ```
+    func bindingArray() -> [UIBinding<Value.Element>] {
+        return wrappedValue.indices.map { idx in
+            return safe(idx, default: wrappedValue[idx])
+        }
+    }
+
     /// Accesses and binds to a collection element at the given index without bounds checking.
     ///
     /// ⚠️ This method will crash at runtime if the index is out of bounds.
@@ -223,121 +251,23 @@ public extension SafeBinding where Value: MutableCollection {
         }
     }
 
-    /// Returns a binding to an element at the given index or `nil` when out of bounds.
+    /// Safely accesses and binds to a collection element at the given index.
     ///
-    /// This overload is available when the element type conforms to `ExpressibleByNilLiteral`.
-    /// When the index is invalid, the binding provides `nil` as a fallback value.
+    /// This overload uses the current value at the index as the default value.
     ///
-    /// - Parameter index: The index to bind to.
-    /// - Returns: A `UIBinding` for the element at the index or `nil` if out of bounds.
+    /// ⚠️ This method will crash if the index is out of bounds.
+    /// Consider using `safe(_:default:)` when the index may be invalid.
     ///
-    /// ### Example
-    /// ```swift
-    /// @UIState var optionalItems: [String?] = ["A", "B"]
-    /// let maybeThird = $optionalItems.safe(2)
-    /// print(maybeThird.wrappedValue ?? "None") // "None"
-    /// ```
-    func safe(_ index: Value.Index) -> UIBinding<Value.Element>
-    where Value.Element: ExpressibleByNilLiteral {
-        // Returns a binding to an element at the given index or `nil` when out of bounds.
-        //
-        // - Parameter index: The index to bind to.
-        // - Returns: A `UIBinding` for the element at the index or `nil` if out of bounds.
-        return safe(index, default: nil)
-    }
-
-    /// Returns a binding to an element at the given index or an empty array (`[]`) when out of bounds.
-    ///
-    /// This overload is available when the element type conforms to `ExpressibleByArrayLiteral`.
-    /// When the index is invalid, the binding provides an empty array as a fallback value.
-    ///
-    /// - Parameter index: The index to bind to.
-    /// - Returns: A `UIBinding` for the array element or an empty array if the index is invalid.
+    /// - Parameter index: The index of the element to access.
+    /// - Returns: A `UIBinding` for the element at the given index.
     ///
     /// ### Example
     /// ```swift
-    /// @UIState var arrayOfArrays: [[Int]] = [[1, 2]]
-    /// let outOfBounds = $arrayOfArrays.safe(2)
-    /// print(outOfBounds.wrappedValue) // []
+    /// @UIState var list = ["X", "Y"]
+    /// let binding = $list.safe(1)
+    /// print(binding.wrappedValue) // "Y"
     /// ```
-    func safe(_ index: Value.Index) -> UIBinding<Value.Element>
-    where Value.Element: ExpressibleByArrayLiteral {
-        return safe(index, default: [])
-    }
-
-    /// Returns a binding to an element at the given index or an empty dictionary (`[:]`) when out of bounds.
-    ///
-    /// This overload is available when the element type conforms to `ExpressibleByDictionaryLiteral`.
-    /// When the index is invalid, the binding provides an empty dictionary as a fallback value.
-    ///
-    /// - Parameter index: The index to bind to.
-    /// - Returns: A `UIBinding` for the dictionary element or an empty dictionary if the index is invalid.
-    ///
-    /// ### Example
-    /// ```swift
-    /// @UIState var arrayOfDicts: [[String: Int]] = [["one": 1]]
-    /// let outOfBounds = $arrayOfDicts.safe(2)
-    /// print(outOfBounds.wrappedValue) // [:]
-    /// ```
-    func safe(_ index: Value.Index) -> UIBinding<Value.Element>
-    where Value.Element: ExpressibleByDictionaryLiteral {
-        return safe(index, default: [:])
-    }
-
-    /// Returns a binding to an element at the given index or `0.0` when out of bounds.
-    ///
-    /// This overload is available when the element type conforms to `ExpressibleByFloatLiteral`.
-    /// When the index is invalid, the binding provides `0.0` as a fallback value.
-    ///
-    /// - Parameter index: The index to bind to.
-    /// - Returns: A `UIBinding` for the floating-point element or `0.0` if the index is invalid.
-    ///
-    /// ### Example
-    /// ```swift
-    /// @UIState var arrayOfFloats: [Double] = [1.5, 2.5]
-    /// let outOfBounds = $arrayOfFloats.safe(3)
-    /// print(outOfBounds.wrappedValue) // 0.0
-    /// ```
-    func safe(_ index: Value.Index) -> UIBinding<Value.Element>
-    where Value.Element: ExpressibleByFloatLiteral {
-        return safe(index, default: 0.0)
-    }
-
-    /// Returns a binding to an element at the given index or an empty string (`""`) when out of bounds.
-    ///
-    /// This overload is available when the element type conforms to `ExpressibleByStringLiteral`.
-    /// When the index is invalid, the binding provides an empty string as a fallback value.
-    ///
-    /// - Parameter index: The index to bind to.
-    /// - Returns: A `UIBinding` for the string element or an empty string if the index is invalid.
-    ///
-    /// ### Example
-    /// ```swift
-    /// @UIState var arrayOfStrings: [String] = ["Hello", "World"]
-    /// let outOfBounds = $arrayOfStrings.safe(5)
-    /// print(outOfBounds.wrappedValue) // ""
-    /// ```
-    func safe(_ index: Value.Index) -> UIBinding<Value.Element>
-    where Value.Element: ExpressibleByStringLiteral {
-        return safe(index, default: "")
-    }
-
-    /// Returns a binding to an element at the given index or `0` when out of bounds.
-    ///
-    /// This overload is available when the element type conforms to `ExpressibleByIntegerLiteral`.
-    /// When the index is invalid, the binding provides `0` as a fallback value.
-    ///
-    /// - Parameter index: The index to bind to.
-    /// - Returns: A `UIBinding` for the integer element or `0` if the index is invalid.
-    ///
-    /// ### Example
-    /// ```swift
-    /// @UIState var arrayOfInts: [Int] = [1, 2, 3]
-    /// let outOfBounds = $arrayOfInts.safe(10)
-    /// print(outOfBounds.wrappedValue) // 0
-    /// ```
-    func safe(_ index: Value.Index) -> UIBinding<Value.Element>
-    where Value.Element: ExpressibleByIntegerLiteral {
-        return safe(index, default: 0)
+    func safe(_ index: Value.Index) -> UIBinding<Value.Element> {
+        return safe(index, default: wrappedValue[index])
     }
 }

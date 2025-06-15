@@ -17,7 +17,7 @@ import Foundation
 @propertyWrapper
 @dynamicMemberLookup
 @dynamicCallable
-public struct IgnoredState<Value>: Hashable {
+public struct IgnoredState<Value>: Hashable, CustomReflectable {
     /// An optional identifier associated with the ignored value.
     ///
     /// Use this identifier to differentiate `IgnoredState` instances during hashing or equality checks,
@@ -116,6 +116,21 @@ public struct IgnoredState<Value>: Hashable {
         }
     }
 
+    /// Dynamically calls the wrapped closure when it takes no arguments and returns a value.
+    ///
+    /// This overload supports closures of type `() -> R`, allowing direct call syntax on the wrapped closure.
+    ///
+    /// - Returns: The result of invoking the wrapped closure.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @IgnoredState var closure: () -> String = { "Hello" }
+    /// print(closure()) // "Hello"
+    /// ```
+    func dynamicallyCall<R>() -> R where Value == () -> R {
+        return wrappedValue()
+    }
+
     /// Dynamically calls the wrapped closure using the provided argument.
     ///
     /// This method enables `IgnoredState` to forward a single argument to a wrapped closure when `Value` is a function of type `(P) -> R`.
@@ -140,18 +155,63 @@ public struct IgnoredState<Value>: Hashable {
         return wrappedValue(p)
     }
 
-    /// Dynamically calls the wrapped closure when it takes no arguments and returns a value.
+    /// Dynamically calls the wrapped closure with two arguments.
     ///
-    /// This overload supports closures of type `() -> R`, allowing direct call syntax on the wrapped closure.
+    /// This method enables forwarding two parameters to a wrapped closure when `Value` is a function of type `(P1, P2) -> R`.
     ///
+    /// - Parameter args: An array containing exactly two arguments to be passed to the wrapped closure.
     /// - Returns: The result of invoking the wrapped closure.
+    ///
+    /// - Note: A runtime error is thrown if arguments are missing or of the wrong types.
     ///
     /// ### Example
     /// ```swift
-    /// @IgnoredState var closure: () -> String = { "Hello" }
-    /// print(closure()) // "Hello"
+    /// @IgnoredState var closure: (Int, String) -> String = { number, word in "\(number)-\(word)" }
+    /// let result: String = closure(5, "times")
+    /// print(result) // "5-times"
     /// ```
-    func dynamicallyCall<R>() -> R where Value == () -> R {
-        return wrappedValue()
+    func dynamicallyCall<P1, P2, R>(withArguments args: [Any]) -> R
+    where Value == (P1, P2) -> R {
+        guard args.count == 2,
+              let p1 = args[0] as? P1,
+              let p2 = args[1] as? P2 else {
+            fatalError("Expected exactly 2 arguments of correct types")
+        }
+
+        return wrappedValue(p1, p2)
+    }
+
+    /// Dynamically calls the wrapped closure with three arguments.
+    ///
+    /// This method enables forwarding three parameters to a wrapped closure when `Value` is a function of type `(P1, P2, P3) -> R`.
+    ///
+    /// - Parameter args: An array containing exactly three arguments to be passed to the wrapped closure.
+    /// - Returns: The result of invoking the wrapped closure.
+    ///
+    /// - Note: A runtime error is thrown if the arguments are missing or of incorrect types.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @IgnoredState var closure: (Int, Int, Int) -> Int = { $0 + $1 + $2 }
+    /// let result: Int = closure(1, 2, 3)
+    /// print(result) // "6"
+    /// ```
+    func dynamicallyCall<P1, P2, P3, R>(withArguments args: [Any]) -> R
+    where Value == (P1, P2, P3) -> R {
+        guard args.count == 3,
+              let p1 = args[0] as? P1,
+              let p2 = args[1] as? P2,
+              let p3 = args[2] as? P3 else {
+            fatalError("Expected exactly 3 arguments of correct types")
+        }
+
+        return wrappedValue(p1, p2, p3)
+    }
+
+    /// CustomReflectable conformance.
+    ///
+    /// Provides a mirror reflecting the wrapped value.
+    public var customMirror: Mirror {
+        return .init(reflecting: wrappedValue)
     }
 }
