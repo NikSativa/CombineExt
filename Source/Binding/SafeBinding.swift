@@ -113,12 +113,12 @@ public extension SafeBinding {
     /// ```
     func observe<New>(_ keyPath: WritableKeyPath<Value, New>) -> UIBinding<New> {
         let newPublisher: AnyPublisher<DiffedValue<New>, Never> = map { parent in
-            return DiffedValue(old: parent.old?[keyPath: keyPath], new: parent.$bindableNew.observe(keyPath))
+            return DiffedValue(old: parent.old?[keyPath: keyPath], new: parent.$bindableNew(keyPath))
         }
         .eraseToAnyPublisher()
 
-        return .init(publisher: newPublisher) {
-            return self.wrappedValue[keyPath: keyPath]
+        return .init(publisher: newPublisher) { [self] in
+            return wrappedValue[keyPath: keyPath]
         } set: { [self] new in
             wrappedValue[keyPath: keyPath] = new
         }

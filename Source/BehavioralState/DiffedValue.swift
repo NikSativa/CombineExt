@@ -89,7 +89,13 @@ extension DiffedValue: CustomDebugStringConvertible {
     }
 }
 
-extension DiffedValue: Equatable where Value: Equatable {}
+extension DiffedValue: Equatable where Value: Equatable {
+    public static func ==(lhs: Self, rhs: Self) -> Bool {
+        return rhs.old == rhs.new
+    }
+}
+
+extension DiffedValue: Hashable where Value: Hashable {}
 
 #if swift(>=6.0)
 extension DiffedValue: Sendable where Value: Sendable {}

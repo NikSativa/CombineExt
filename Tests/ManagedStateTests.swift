@@ -57,7 +57,6 @@ final class ManagedStateTests: XCTestCase {
             .store(in: &cancellables)
     }
 
-    @MainActor
     func testClosureCapturing() {
         let some: () -> Void = { [_subject] in
             print("ignore me. \(_subject.number as Int)")
@@ -65,7 +64,6 @@ final class ManagedStateTests: XCTestCase {
         some()
     }
 
-    @MainActor
     func testEditable() async throws {
         subscribe()
 
@@ -107,7 +105,6 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertEqual(subject.text, "4")
     }
 
-    @MainActor
     func testInitialization() {
         XCTAssertEqual(subject.number, 0)
         XCTAssertEqual(subject.text, "0")
@@ -116,7 +113,6 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertEqual(texts, [])
     }
 
-    @MainActor
     func testSink() async throws {
         subscribe()
 
@@ -205,9 +201,9 @@ private struct CounterModel: BehavioralStateContract {
 
     @SubscriptionBuilder
     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
-        state.bindDiffed(to: \.value) { parent in
+        state.bind(to: \.value) { parent in
             counterBind += 1
-            parent.new.valueBind = parent.new.value * 3
+            parent.valueBind = parent.value * 3
         }
     }
 

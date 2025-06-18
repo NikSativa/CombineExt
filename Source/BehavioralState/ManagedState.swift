@@ -140,6 +140,7 @@ public enum ManagedStateLock {
 ///     .store(in: &cancellables)
 /// ```
 @dynamicMemberLookup
+@dynamicCallable
 @propertyWrapper
 public final class ManagedState<Value: BehavioralStateContract> {
     /// Internal subject used to emit value changes to observers.
@@ -211,20 +212,21 @@ public final class ManagedState<Value: BehavioralStateContract> {
         case .custom(let nSLocking):
             self.lock = nSLocking
         }
+        self.prevValues = .init(old: nil, new: wrappedValue, isInitial: true)
 
         // initial `observe`
         @UIState
         var bindable = wrappedValue
-        self.valueSubject = .init(.init(old: nil, new: $bindable.observe()))
-        self.rulesSubject = .init(.init(old: nil, new: $bindable.observe()))
+        self.valueSubject = .init(.init(old: nil, new: $bindable()))
+        self.rulesSubject = .init(.init(old: nil, new: $bindable()))
+
+        // create rules
+        notificationRules += createAnyRules($bindable())
+        bindingRules += createBindingRules()
 
         self.lock.withLock {
-            // create rules
-            bindingRules += createBindingRules()
-            notificationRules += createAnyRules()
-
             // send initial state
-            send(.init(old: wrappedValue, new: innerValue, isInitial: true))
+            send(.init(old: wrappedValue, new: bindable, isInitial: true))
         }
     }
 
@@ -245,8 +247,8 @@ public final class ManagedState<Value: BehavioralStateContract> {
     }()
 
     @AnyTokenBuilder<Any>
-    private func createAnyRules() -> [Any] {
-        Value.applyAnyRules(to: observe())
+    private func createAnyRules(_ bindable: UIBinding<Value>) -> [Any] {
+        Value.applyAnyRules(to: bindable)
     }
 
     @SubscriptionBuilder
@@ -254,27 +256,20 @@ public final class ManagedState<Value: BehavioralStateContract> {
         Value.applyBindingRules(to: rulesSubject.eraseToAnyPublisher())
     }
 
-    private var prevValues: PairedValue<Value>?
+    private var prevValues: PairedValue<Value>
     private func send(_ values: PairedValue<Value>) {
-        if values == prevValues {
+        guard values.isInitial || values.old != values.new else {
             return
         }
+
         prevValues = values
 
         applyRules(with: values)
     }
 
-    private func shouldEmit(_ values: PairedValue<Value>) -> Bool {
-        return values.isInitial || (!values.isInitial && values.old != values.new)
-    }
-
     private func applyRules(with values: PairedValue<Value>) {
-        guard shouldEmit(values) else {
-            return
-        }
-
         var counter = 0
-        var pair: PairedValue<Value> = .init(old: innerValue, new: values.new, isInitial: values.isInitial)
+        var pair: PairedValue<Value> = values
         repeat {
             pair = modify(pair)
             counter += 1
@@ -282,13 +277,12 @@ public final class ManagedState<Value: BehavioralStateContract> {
 
         assert(ManagedStateCyclicDependencyWarning || counter < 100, "Cyclic dependency detected in state rules")
 
-        let newValues: PairedValue = .init(old: innerValue, new: pair.new, isInitial: values.isInitial)
-        guard shouldEmit(newValues) else {
+        guard values.isInitial || values.old != pair.new else {
             return
         }
 
         innerValue = pair.new
-        valueSubject.send(.init(old: values.old, new: observe()))
+        valueSubject.send(.init(old: values.old, new: self()))
     }
 
     private func modify(_ values: PairedValue<Value>) -> PairedValue<Value> {
@@ -296,10 +290,10 @@ public final class ManagedState<Value: BehavioralStateContract> {
         var bindable: Value = values.new
         bindable.applyRules()
 
-        let changes = DiffedValue(old: values.old, new: $bindable.observe())
+        let changes = DiffedValue(old: values.old, new: $bindable())
         rulesSubject.send(changes)
 
-        return .init(old: values.new, new: changes.new)
+        return .init(old: values.new, new: bindable)
     }
 }
 
@@ -349,6 +343,26 @@ public extension ManagedState {
         set {
             wrappedValue[keyPath: keyPath] = newValue
         }
+    }
+
+    func dynamicallyCall(withArguments: [Any]) -> UIBinding<Value> {
+        return observe()
+    }
+
+    func dynamicallyCall<T>(withArguments args: [WritableKeyPath<Value, T>]) -> UIBinding<T> {
+        guard let keyPath = args.first else {
+            fatalError("At least one key path argument is required")
+        }
+
+        return observe(keyPath)
+    }
+
+    func dynamicallyCall<T>(withKeywordArguments args: KeyValuePairs<WritableKeyPath<Value, T>, T>) {
+        guard let arg = args.first else {
+            fatalError("At least one key path argument is required")
+        }
+
+        wrappedValue[keyPath: arg.key] = arg.value
     }
 }
 
@@ -414,9 +428,6 @@ extension PairedValue: CustomDebugStringConvertible {
         "DiffedValue(old: \(String(describing: old)), new: \(new))"
     }
 }
-
-extension PairedValue: Equatable where Value: Equatable {}
-extension PairedValue: Sendable where Value: Sendable {}
 
 /// A no-op locking mechanism that performs no synchronization.
 ///

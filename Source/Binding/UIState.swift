@@ -20,8 +20,9 @@ import Foundation
 ///
 /// state.counter = 1
 /// ```
-@propertyWrapper
 @dynamicMemberLookup
+@dynamicCallable
+@propertyWrapper
 public final class UIState<Value: Equatable> {
     /// Internal subject that emits a `DiffedValue` each time the value is updated.
     ///
@@ -107,6 +108,26 @@ public extension UIState {
         set {
             wrappedValue[keyPath: keyPath] = newValue
         }
+    }
+
+    func dynamicallyCall(withArguments: [Any]) -> UIBinding<Value> {
+        return observe()
+    }
+
+    func dynamicallyCall<T>(withArguments args: [WritableKeyPath<Value, T>]) -> UIBinding<T> {
+        guard let keyPath = args.first else {
+            fatalError("At least one key path argument is required")
+        }
+
+        return observe(keyPath)
+    }
+
+    func dynamicallyCall<T>(withKeywordArguments args: KeyValuePairs<WritableKeyPath<Value, T>, T>) {
+        guard let arg = args.first else {
+            fatalError("At least one key path argument is required")
+        }
+
+        wrappedValue[keyPath: arg.key] = arg.value
     }
 }
 
