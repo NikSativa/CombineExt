@@ -85,6 +85,12 @@ public struct UIBinding<Value> {
     ///     }
     /// }
     /// ```
+    /// Creates an uninitialized `UIBinding` that will crash when accessed.
+    ///
+    /// This initializer is not intended for direct use. It creates a binding that will
+    /// trigger a fatal error when its `wrappedValue` is accessed.
+    ///
+    /// - Warning: This initializer should only be used internally by the framework.
     public init() {
         self.get = { fatalError("init(): must supply initial value") }
         self.set = { _ in }
@@ -102,6 +108,19 @@ public struct UIBinding<Value> {
     /// ```swift
     /// let constantName: UIBinding<String> = UIBinding(wrappedValue: "Read-only")
     /// print(constantName.wrappedValue) // "Read-only"
+    /// ```
+    /// Creates a constant `UIBinding` with an immutable value.
+    ///
+    /// This initializer creates a read-only binding that never emits changes.
+    /// It's useful for previews, test data, or placeholder values where dynamic updates are not needed.
+    ///
+    /// - Parameter value: The constant value to wrap in the binding.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let constantBinding = UIBinding(wrappedValue: "Hello")
+    /// print(constantBinding.wrappedValue) // "Hello"
+    /// // constantBinding.wrappedValue = "World" // No effect, value remains "Hello"
     /// ```
     public init(wrappedValue value: Value) {
         self.get = { value }
@@ -186,24 +205,60 @@ public extension UIBinding {
         }
     }
 
+    subscript<V>(dynamicMember keyPath: KeyPath<Value, V>) -> V {
+        wrappedValue[keyPath: keyPath]
+    }
+
+    /// Dynamically calls the binding to return a binding to the entire value.
+    ///
+    /// This method enables callable syntax for accessing the full binding.
+    ///
+    /// - Parameter withArguments: Unused arguments array.
+    /// - Returns: A `UIBinding` for the entire value.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @UIBinding var user = User(name: "Alice", age: 30)
+    ///
+    /// // Get binding to entire user object
+    /// let userBinding = user()
+    /// userBinding.wrappedValue.name = "Bob"
+    ///
+    /// // Observe changes to entire user
+    /// user().sink { user in
+    ///     print("User updated: \(user.name), \(user.age)")
+    /// }.store(in: &cancellables)
+    /// ```
     func dynamicallyCall(withArguments: [Any]) -> UIBinding<Value> {
         return observe()
     }
 
+    /// Dynamically calls the binding with a key path to return a nested binding.
+    ///
+    /// This method enables callable syntax for accessing nested property bindings.
+    ///
+    /// - Parameter args: An array containing a single writable key path.
+    /// - Returns: A `UIBinding` for the nested property.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @UIBinding var user = User(name: "Alice", age: 30)
+    ///
+    /// // Get binding to specific property
+    /// let nameBinding = user(\.name)
+    /// nameBinding.wrappedValue = "Bob"
+    ///
+    /// // Observe changes to specific property
+    /// user(\.age).sink { age in
+    ///     print("Age changed to: \(age)")
+    /// }.store(in: &cancellables)
+    /// ```
     func dynamicallyCall<T>(withArguments args: [WritableKeyPath<Value, T>]) -> UIBinding<T> {
         guard let keyPath = args.first else {
             fatalError("At least one key path argument is required")
         }
 
         return observe(keyPath)
-    }
-
-    func dynamicallyCall<T>(withKeywordArguments args: KeyValuePairs<WritableKeyPath<Value, T>, T>) {
-        guard let arg = args.first else {
-            fatalError("At least one key path argument is required")
-        }
-
-        wrappedValue[keyPath: arg.key] = arg.value
     }
 }
 

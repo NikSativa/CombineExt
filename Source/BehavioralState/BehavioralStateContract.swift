@@ -9,7 +9,7 @@ import Foundation
 /// Use `applyBindingRules(to:)` to bind view updates and side effects to state changes.
 /// Use `applyAnyRules(to:)` to handle external events, such as system notifications or app lifecycle changes.
 ///
-/// All types conforming to this protocol must also conform to `Equatable` and `ActionHandling`.
+/// All types conforming to this protocol must also conform to `Equatable`.
 public protocol BehavioralStateContract: Equatable {
     /// A publisher that emits `DiffedValue` changes for the conforming model.
     ///
@@ -96,7 +96,7 @@ public extension Publisher where Failure == Never {
     func applyNestedRules<Value, NEW>(to keyPath: WritableKeyPath<Value, NEW>) -> [AnyCancellable]
     where NEW: BehavioralStateContract, Value: BehavioralStateContract, Output == DiffedValue<Value> {
         let state: AnyPublisher<DiffedValue<NEW>, Never> = map { parent in
-            return DiffedValue(old: parent.old?[keyPath: keyPath], new: parent.$bindableNew.observe(keyPath))
+            return parent.map(keyPath: keyPath)
         }.eraseToAnyPublisher()
 
         NEW.applyBindingRules(to: state)

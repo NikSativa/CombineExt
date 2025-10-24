@@ -93,23 +93,15 @@ public var ManagedStateDefaultLock: ManagedStateLock = .synced
 /// ```swift
 /// let model = ManagedState(wrappedValue: state, lock: .custom(NSRecursiveLock()))
 /// ```
-/// Defines the locking mechanism used within a `ManagedState` instance.
-///
-/// Use this enum to configure how thread safety is enforced when reading and writing state.
-///
-/// - `absent`: No locking is performed. Not thread-safe.
-/// - `synced`: Uses an internal recursive lock for thread safety. Default.
-/// - `custom`: Provides a custom lock implementation.
-///
-/// ### Example
-/// ```swift
-/// let model = ManagedState(wrappedValue: state, lock: .custom(NSRecursiveLock()))
-/// ```
 public enum ManagedStateLock {
     /// No synchronization. Use only when thread-safety is not a concern.
     case absent
 
     /// Uses a recursive lock to ensure thread-safety during state access and updates.
+    ///
+    /// ⚠️ **Important**: While individual property access is thread-safe, compound operations
+    /// like `state.count += 1` are NOT atomic and may cause race conditions in concurrent code.
+    /// Use direct assignment `state.count = newValue` for thread-safe updates.
     case synced
 
     /// Provides a custom locking mechanism conforming to `NSLocking`.
@@ -124,6 +116,10 @@ public enum ManagedStateLock {
 /// Suitable for ViewModels and dynamic UI frameworks like SwiftUI or UIKit.
 ///
 /// - Note: This type supports `@dynamicMemberLookup` to simplify access to underlying properties.
+///
+/// ⚠️ **Thread Safety**: While individual property access is thread-safe, compound operations
+/// like `state.count += 1` are NOT atomic and may cause race conditions in concurrent code.
+/// Use direct assignment for thread-safe updates: `state.count = newValue`.
 ///
 /// ### Example
 /// ```swift
@@ -148,9 +144,14 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// This subject drives the `publisher` and emits a `Change<Value>` when the wrapped model value changes.
     /// Duplicate values are filtered using `Equatable`.
     private let valueSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
+    /// Internal subject used to emit rule changes to observers.
+    ///
+    /// This subject drives rule evaluation and emits changes when the wrapped model value changes.
     private let rulesSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
 
+    /// The internal stored value being managed.
     private var innerValue: Value
+    /// The locking mechanism used for thread safety.
     private let lock: NSLocking
 
     /// The current model value being managed.
@@ -188,7 +189,9 @@ public final class ManagedState<Value: BehavioralStateContract> {
         return self
     }
 
+    /// Array of cancellable subscriptions for binding rules.
     private var bindingRules: [AnyCancellable] = []
+    /// Array of notification tokens for external event rules.
     private var notificationRules: [Any] = []
 
     /// Creates a new managed state wrapper with the specified initial value.
@@ -217,8 +220,8 @@ public final class ManagedState<Value: BehavioralStateContract> {
         // initial `observe`
         @UIState
         var bindable = wrappedValue
-        self.valueSubject = .init(.init(old: nil, new: $bindable()))
-        self.rulesSubject = .init(.init(old: nil, new: $bindable()))
+        self.valueSubject = .init(.init(old: nil, binding: $bindable()))
+        self.rulesSubject = .init(.init(old: nil, binding: $bindable()))
 
         // create rules
         notificationRules += createAnyRules($bindable())
@@ -240,23 +243,77 @@ public final class ManagedState<Value: BehavioralStateContract> {
     ///     .sink { diff in print("Changed:", diff) }
     ///     .store(in: &cancellables)
     /// ```
-    public lazy var publisher: AnyPublisher<DiffedValue<Value>, Failure> = {
+    public lazy var diffedPublisher: AnyPublisher<DiffedValue<Value>, Failure> = {
         return valueSubject
             .removeDuplicates()
             .eraseToAnyPublisher()
     }()
 
+    /// A publisher that emits only the new values when the wrapped value changes.
+    ///
+    /// Use this publisher to observe the current value without the diff information.
+    ///
+    /// ### Example
+    /// ```swift
+    /// $state.publisher
+    ///     .sink { newValue in print("New value:", newValue) }
+    ///     .store(in: &cancellables)
+    /// ```
+    public lazy var publisher: AnyPublisher<Value, Failure> = {
+        return valueSubject
+            .map(\.new)
+            .removeDuplicates()
+            .eraseToAnyPublisher()
+    }()
+
+    /// Atomically updates the managed state using a closure to prevent race conditions.
+    ///
+    /// This method ensures that read-modify-write operations are atomic and thread-safe.
+    /// All operations within the closure are executed under a single lock, preventing
+    /// race conditions in concurrent code.
+    ///
+    /// - Parameter block: A closure that receives an inout reference to the current value.
+    ///
+    /// ### Example
+    /// ```swift
+    /// state.withLock { value in
+    ///     value.count += 1
+    ///     value.lastUpdated = Date()
+    /// }
+    /// ```
+    public func withLock(_ block: (inout Value) -> Void) {
+        lock.withLock {
+            var newValue = innerValue
+            block(&newValue)
+
+            if innerValue != newValue {
+                send(.init(old: innerValue, new: newValue, isInitial: false))
+            }
+        }
+    }
+
+    /// Creates notification rules for the managed state.
+    ///
+    /// This method delegates to the `applyAnyRules` method of the wrapped value type.
     @AnyTokenBuilder<Any>
     private func createAnyRules(_ bindable: UIBinding<Value>) -> [Any] {
         Value.applyAnyRules(to: bindable)
     }
 
+    /// Creates binding rules for the managed state.
+    ///
+    /// This method delegates to the `applyBindingRules` method of the wrapped value type.
     @SubscriptionBuilder
     private func createBindingRules() -> [AnyCancellable] {
         Value.applyBindingRules(to: rulesSubject.eraseToAnyPublisher())
     }
 
+    /// The previous values for change tracking.
     private var prevValues: PairedValue<Value>
+
+    /// Sends a value change if it represents a meaningful update.
+    ///
+    /// - Parameter values: The paired old and new values to potentially send.
     private func send(_ values: PairedValue<Value>) {
         guard values.isInitial || values.old != values.new else {
             return
@@ -267,6 +324,9 @@ public final class ManagedState<Value: BehavioralStateContract> {
         applyRules(with: values)
     }
 
+    /// Applies business rules to the state and handles cyclic dependency detection.
+    ///
+    /// - Parameter values: The paired old and new values to process.
     private func applyRules(with values: PairedValue<Value>) {
         var counter = 0
         var pair: PairedValue<Value> = values
@@ -282,15 +342,19 @@ public final class ManagedState<Value: BehavioralStateContract> {
         }
 
         innerValue = pair.new
-        valueSubject.send(.init(old: values.old, new: self()))
+        valueSubject.send(.init(old: values.old, binding: self()))
     }
 
+    /// Modifies the state by applying business rules and notifying rule subscribers.
+    ///
+    /// - Parameter values: The paired old and new values to modify.
+    /// - Returns: The modified paired values after applying rules.
     private func modify(_ values: PairedValue<Value>) -> PairedValue<Value> {
         @UIState
         var bindable: Value = values.new
         bindable.applyRules()
 
-        let changes = DiffedValue(old: values.old, new: $bindable())
+        let changes = DiffedValue(old: values.old, binding: $bindable())
         rulesSubject.send(changes)
 
         return .init(old: values.new, new: bindable)
@@ -303,7 +367,23 @@ extension ManagedState: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
     public typealias Failure = Never
 
+    /// Attaches the specified subscriber to receive diffed value changes.
+    ///
+    /// This method forwards the subscription to the internal `diffedPublisher`,
+    /// which emits `DiffedValue` containing both old and new values.
+    ///
+    /// - Parameter subscriber: The subscriber to attach to this publisher.
     public func receive<S>(subscriber: S) where S: Subscriber, Never == S.Failure, DiffedValue<Value> == S.Input {
+        diffedPublisher.receive(subscriber: subscriber)
+    }
+
+    /// Attaches the specified subscriber to receive only new values.
+    ///
+    /// This method forwards the subscription to the internal `publisher`,
+    /// which emits only the new values without the old values.
+    ///
+    /// - Parameter subscriber: The subscriber to attach to this publisher.
+    public func receive<S>(subscriber: S) where S: Subscriber, Never == S.Failure, Value == S.Input {
         publisher.receive(subscriber: subscriber)
     }
 }
@@ -328,13 +408,23 @@ public extension ManagedState {
     ///
     /// This subscript allows direct interaction with the stored value as if it were a normal instance.
     ///
+    /// ⚠️ **Thread Safety**: While individual get/set operations are thread-safe, compound operations
+    /// like `state.count += 1` are NOT atomic and may cause race conditions in concurrent code.
+    /// Use direct assignment for thread-safe updates: `state.count = newValue`.
+    ///
     /// - Parameter keyPath: A writable key path to a property of the wrapped value.
     /// - Returns: The current value at the specified key path.
     ///
     /// ### Example
     /// ```swift
-    /// state.username = "John"
-    /// print(state.username)
+    /// state.username = "John"  // ✅ Thread-safe
+    /// print(state.username)   // ✅ Thread-safe
+    ///
+    /// // ❌ NOT thread-safe in concurrent code:
+    /// // state.count += 1
+    ///
+    /// // ✅ Thread-safe alternative:
+    /// state.count = state.count + 1
     /// ```
     subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> V {
         get {
@@ -345,24 +435,60 @@ public extension ManagedState {
         }
     }
 
+    subscript<V>(dynamicMember keyPath: KeyPath<Value, V>) -> V {
+        wrappedValue[keyPath: keyPath]
+    }
+
+    /// Dynamically calls the managed state to return a binding to the entire value.
+    ///
+    /// This method enables callable syntax for accessing the full binding.
+    ///
+    /// - Parameter withArguments: Unused arguments array.
+    /// - Returns: A `UIBinding` for the entire managed value.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @ManagedState var user = User(name: "Alice", age: 30)
+    ///
+    /// // Get binding to entire user object
+    /// let userBinding = user()
+    /// userBinding.wrappedValue.name = "Bob"
+    ///
+    /// // Observe changes to entire user
+    /// user().sink { user in
+    ///     print("User updated: \(user.name), \(user.age)")
+    /// }.store(in: &cancellables)
+    /// ```
     func dynamicallyCall(withArguments: [Any]) -> UIBinding<Value> {
         return observe()
     }
 
+    /// Dynamically calls the managed state with a key path to return a nested binding.
+    ///
+    /// This method enables callable syntax for accessing nested property bindings.
+    ///
+    /// - Parameter args: An array containing a single writable key path.
+    /// - Returns: A `UIBinding` for the nested property.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @ManagedState var user = User(name: "Alice", age: 30)
+    ///
+    /// // Get binding to specific property
+    /// let nameBinding = user(\.name)
+    /// nameBinding.wrappedValue = "Bob"
+    ///
+    /// // Observe changes to specific property
+    /// user(\.age).sink { age in
+    ///     print("Age changed to: \(age)")
+    /// }.store(in: &cancellables)
+    /// ```
     func dynamicallyCall<T>(withArguments args: [WritableKeyPath<Value, T>]) -> UIBinding<T> {
         guard let keyPath = args.first else {
             fatalError("At least one key path argument is required")
         }
 
         return observe(keyPath)
-    }
-
-    func dynamicallyCall<T>(withKeywordArguments args: KeyValuePairs<WritableKeyPath<Value, T>, T>) {
-        guard let arg = args.first else {
-            fatalError("At least one key path argument is required")
-        }
-
-        wrappedValue[keyPath: arg.key] = arg.value
     }
 }
 

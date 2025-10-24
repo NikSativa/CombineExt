@@ -5,6 +5,28 @@ import Foundation
 /// and converts them into an array of `AnyCancellable` for use with Combine subscriptions.
 @resultBuilder
 public struct SubscriptionBuilder {
+    /// Creates an array of `AnyCancellable` instances using the subscription builder DSL.
+    ///
+    /// This method provides a convenient way to collect multiple cancellable subscriptions
+    /// using the result builder syntax and convert them into an array for storage.
+    ///
+    /// - Parameter content: A closure that uses the subscription builder DSL to create cancellables.
+    /// - Returns: An array of type-erased `AnyCancellable` instances.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let cancellables = SubscriptionBuilder.subscribe {
+    ///     publisher1.sink { print($0) }
+    ///     publisher2.sink { print($0) }
+    ///     if condition {
+    ///         publisher3.sink { print($0) }
+    ///     }
+    /// }
+    /// ```
+    public static func subscribe(@SubscriptionBuilder content: () -> [AnyCancellable]) -> [AnyCancellable] {
+        return content()
+    }
+
     /// Combines multiple arrays of `Cancellable` into a single flat array of `AnyCancellable`.
     ///
     /// - Parameter components: Variadic arrays of `Cancellable` instances.

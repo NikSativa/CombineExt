@@ -63,7 +63,7 @@ public extension Publisher where Failure == Never {
                         onChange: @escaping (inout S) -> Void) -> Cancellable
     where S: Equatable, Value: BehavioralStateContract, Output == DiffedValue<Value> {
         map { parent in
-            return DiffedValue(old: parent.old?[keyPath: keyPath], new: parent.$bindableNew.observe(keyPath))
+            return parent.map(keyPath: keyPath)
         }
         .removeDuplicates()
         .sink { parent in
@@ -89,7 +89,7 @@ public extension Publisher where Failure == Never {
     ///     parent.updateTheme(to: .dark)
     /// }
     /// ```
-    func bind<Value>(to keyPath: WritableKeyPath<Value, some Equatable>,
+    func bind<Value>(to keyPath: KeyPath<Value, some Equatable>,
                      onChange: @escaping (inout Value) -> Void) -> Cancellable
     where Value: BehavioralStateContract, Output == DiffedValue<Value> {
         filter { parent in
@@ -134,7 +134,7 @@ public extension Publisher where Failure == Never {
     /// ```swift
     /// publisher.bind(to: \.name, onChange: Value.onChangeNew(_:))
     /// ```
-    func bind<Value, NEW>(to keyPath: WritableKeyPath<Value, NEW>,
+    func bind<Value, NEW>(to keyPath: KeyPath<Value, NEW>,
                           onChange: @escaping (Value) -> (NEW) -> Void) -> Cancellable
     where Value: BehavioralStateContract, Output == DiffedValue<Value>, NEW: Equatable {
         filter { parent in
@@ -158,7 +158,7 @@ public extension Publisher where Failure == Never {
     /// ```swift
     /// publisher.bind(to: \.name, onChange: Value.onChangeNew)
     /// ```
-    func bind<Value>(to keyPath: WritableKeyPath<Value, some Equatable>,
+    func bind<Value>(to keyPath: KeyPath<Value, some Equatable>,
                      onChange: @escaping (Value) -> () -> Void) -> Cancellable
     where Value: BehavioralStateContract, Output == DiffedValue<Value> {
         filter { parent in
@@ -169,7 +169,24 @@ public extension Publisher where Failure == Never {
         }
     }
 
-    func bind<Value, NEW>(to keyPath: WritableKeyPath<Value, NEW>,
+    /// Binds changes to a specific property and provides both the parent model and the new property value.
+    ///
+    /// This method detects changes at the specified key path and passes both the parent model
+    /// and the new property value into a closure for processing.
+    ///
+    /// - Parameters:
+    ///   - keyPath: A key path to the value being observed.
+    ///   - onChange: A closure taking the parent model and the new property value.
+    /// - Returns: A cancellable instance managing the binding.
+    ///
+    /// ### Example
+    /// ```swift
+    /// publisher.bind(to: \.name, onChange: { model, newName in
+    ///     model.lastUpdated = Date()
+    ///     print("Name changed to: \(newName)")
+    /// })
+    /// ```
+    func bind<Value, NEW>(to keyPath: KeyPath<Value, NEW>,
                           onChange: @escaping (inout Value, NEW) -> Void) -> Cancellable
     where Value: BehavioralStateContract, Output == DiffedValue<Value>, NEW: Equatable {
         filter { parent in
@@ -201,7 +218,7 @@ public extension Publisher where Failure == Never {
     ///   - keyPath: Key path to a tracked `Equatable` property.
     ///   - onChange: Closure to handle the change.
     /// - Returns: A cancellable subscription managing the binding.
-    func bindDiffed<Value>(to keyPath: WritableKeyPath<Value, some Equatable>,
+    func bindDiffed<Value>(to keyPath: KeyPath<Value, some Equatable>,
                            onChange: @escaping (DiffedValue<Value>) -> Void) -> Cancellable
     where Value: BehavioralStateContract, Output == DiffedValue<Value> {
         filter { parent in
@@ -235,7 +252,7 @@ public extension Publisher where Failure == Never {
             return parent.old?[keyPath: keyPath] != parent.new[keyPath: keyPath]
         }
         .sink { parent in
-            let new = DiffedValue(old: parent.old?[keyPath: keyPath], new: parent.$bindableNew.observe(keyPath))
+            let new = parent.map(keyPath: keyPath)
             onChange(&parent.new, new)
         }
     }

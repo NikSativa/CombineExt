@@ -34,27 +34,51 @@ public struct DiffedValue<Value> {
     /// ```
     public var new: Value {
         get {
-            return bindableNew
+            return get()
         }
         nonmutating set {
-            bindableNew = newValue
+            set(newValue)
         }
     }
 
     /// Erase subscription flow.
     ///
     /// This property is used internally to manage bindings to the new value.
-    @UIBinding
-    internal var bindableNew: Value
+    public let get: () -> Value
+    public let set: (Value) -> Void
 
     /// Creates a new `DiffedValue` instance with an optional old value and a new binding.
     ///
     /// - Parameters:
     ///   - old: The previous value before the change. May be `nil` if no previous value exists.
     ///   - new: A binding to the new value.
-    init(old: Value?, new: UIBinding<Value>) {
+    public init(old: Value?, get: @escaping () -> Value, set: @escaping (Value) -> Void) {
         self.old = old
-        self._bindableNew = new
+        self.get = get
+        self.set = set
+    }
+
+    /// Creates a new `DiffedValue` instance with an optional old value and a new binding.
+    ///
+    /// - Parameters:
+    ///   - old: The previous value before the change. May be `nil` if no previous value exists.
+    ///   - new: A binding to the new value.
+    public init(old: Value?, get: @autoclosure @escaping () -> Value, set: @escaping (Value) -> Void) {
+        self.old = old
+        self.get = get
+        self.set = set
+    }
+
+    public init(old: Value?, binding: UIBinding<Value>) {
+        self.old = old
+        self.get = { binding.wrappedValue }
+        self.set = { binding.wrappedValue = $0 }
+    }
+
+    public func map<V>(keyPath: WritableKeyPath<Value, V>) -> DiffedValue<V> {
+        return .init(old: old?[keyPath: keyPath],
+                     get: new[keyPath: keyPath],
+                     set: { new[keyPath: keyPath] = $0 })
     }
 }
 
@@ -81,6 +105,10 @@ public extension DiffedValue {
             new[keyPath: keyPath] = newValue
         }
     }
+
+    subscript<V>(dynamicMember keyPath: KeyPath<Value, V>) -> V {
+        new[keyPath: keyPath]
+    }
 }
 
 extension DiffedValue: CustomDebugStringConvertible {
@@ -90,13 +118,18 @@ extension DiffedValue: CustomDebugStringConvertible {
 }
 
 extension DiffedValue: Equatable where Value: Equatable {
-    public static func ==(lhs: Self, rhs: Self) -> Bool {
+    public static func ==(_: Self, rhs: Self) -> Bool {
         return rhs.old == rhs.new
     }
 }
 
-extension DiffedValue: Hashable where Value: Hashable {}
+extension DiffedValue: Hashable where Value: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(old)
+        hasher.combine(new)
+    }
+}
 
 #if swift(>=6.0)
-extension DiffedValue: Sendable where Value: Sendable {}
+extension DiffedValue: @unchecked Sendable where Value: Sendable {}
 #endif

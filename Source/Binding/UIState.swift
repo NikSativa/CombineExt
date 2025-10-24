@@ -27,7 +27,8 @@ public final class UIState<Value: Equatable> {
     /// Internal subject that emits a `DiffedValue` each time the value is updated.
     ///
     /// This drives the `publisher` and emits a `DiffedValue<Value>` each time the `wrappedValue` is updated.
-    private lazy var subject: CurrentValueSubject<DiffedValue<Value>, Failure> = CurrentValueSubject(.init(old: nil, new: observe()))
+    private lazy var subject: CurrentValueSubject<DiffedValue<Value>, Failure> = CurrentValueSubject(.init(old: nil, binding: observe()))
+
     /// Initializes a `UIState` with a given initial value.
     ///
     /// - Parameter wrappedValue: The initial value of the state.
@@ -44,7 +45,7 @@ public final class UIState<Value: Equatable> {
                 return
             }
 
-            let change: DiffedValue<Value> = .init(old: oldValue, new: observe())
+            let change: DiffedValue<Value> = .init(old: oldValue, binding: observe())
             subject.send(change)
         }
     }
@@ -110,24 +111,60 @@ public extension UIState {
         }
     }
 
+    subscript<V>(dynamicMember keyPath: KeyPath<Value, V>) -> V {
+        wrappedValue[keyPath: keyPath]
+    }
+
+    /// Dynamically calls the state to return a binding to the entire value.
+    ///
+    /// This method enables callable syntax for accessing the full binding.
+    ///
+    /// - Parameter withArguments: Unused arguments array.
+    /// - Returns: A `UIBinding` for the entire value.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @UIState var user = User(name: "Alice", age: 30)
+    ///
+    /// // Get binding to entire user object
+    /// let userBinding = user()
+    /// userBinding.wrappedValue.name = "Bob"
+    ///
+    /// // Observe changes to entire user
+    /// user().sink { user in
+    ///     print("User updated: \(user.name), \(user.age)")
+    /// }.store(in: &cancellables)
+    /// ```
     func dynamicallyCall(withArguments: [Any]) -> UIBinding<Value> {
         return observe()
     }
 
+    /// Dynamically calls the state with a key path to return a nested binding.
+    ///
+    /// This method enables callable syntax for accessing nested property bindings.
+    ///
+    /// - Parameter args: An array containing a single writable key path.
+    /// - Returns: A `UIBinding` for the nested property.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @UIState var user = User(name: "Alice", age: 30)
+    ///
+    /// // Get binding to specific property
+    /// let nameBinding = user(\.name)
+    /// nameBinding.wrappedValue = "Bob"
+    ///
+    /// // Observe changes to specific property
+    /// user(\.age).sink { age in
+    ///     print("Age changed to: \(age)")
+    /// }.store(in: &cancellables)
+    /// ```
     func dynamicallyCall<T>(withArguments args: [WritableKeyPath<Value, T>]) -> UIBinding<T> {
         guard let keyPath = args.first else {
             fatalError("At least one key path argument is required")
         }
 
         return observe(keyPath)
-    }
-
-    func dynamicallyCall<T>(withKeywordArguments args: KeyValuePairs<WritableKeyPath<Value, T>, T>) {
-        guard let arg = args.first else {
-            fatalError("At least one key path argument is required")
-        }
-
-        wrappedValue[keyPath: arg.key] = arg.value
     }
 }
 

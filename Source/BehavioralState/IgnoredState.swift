@@ -1,5 +1,7 @@
 import Foundation
 
+public typealias AlwaysEqual<Value> = IgnoredState<Value>
+
 /// A property wrapper that ignores its value in equality and hashing comparisons.
 ///
 /// Use `IgnoredState` to wrap values that should not influence `Equatable` or `Hashable` behavior,
@@ -116,6 +118,10 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
         }
     }
 
+    public subscript<V>(dynamicMember keyPath: KeyPath<Value, V>) -> V {
+        wrappedValue[keyPath: keyPath]
+    }
+
     /// Dynamically calls the wrapped closure when it takes no arguments and returns a value.
     ///
     /// This overload supports closures of type `() -> R`, allowing direct call syntax on the wrapped closure.
@@ -126,8 +132,16 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
     /// ```swift
     /// @IgnoredState var closure: () -> String = { "Hello" }
     /// print(closure()) // "Hello"
+    ///
+    /// @IgnoredState var counter: () -> Int = {
+    ///     static var count = 0
+    ///     count += 1
+    ///     return count
+    /// }
+    /// print(counter()) // 1
+    /// print(counter()) // 2
     /// ```
-    func dynamicallyCall<R>() -> R where Value == () -> R {
+    public func dynamicallyCall<R>() -> R where Value == () -> R {
         return wrappedValue()
     }
 
@@ -145,8 +159,15 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
     /// @IgnoredState var closure: (Int) -> String = { "\($0)" }
     /// let result: String = closure(42)
     /// print(result) // "42"
+    ///
+    /// @IgnoredState var formatter: (Double) -> String = {
+    ///     let formatter = NumberFormatter()
+    ///     formatter.numberStyle = .currency
+    ///     return formatter.string(from: NSNumber(value: $0)) ?? "\($0)"
+    /// }
+    /// print(formatter(99.99)) // "$99.99"
     /// ```
-    func dynamicallyCall<P, R>(withArguments args: [P]) -> R
+    public func dynamicallyCall<P, R>(withArguments args: [P]) -> R
     where Value == (P) -> R {
         guard let p = args.first else {
             fatalError("No arguments")
@@ -169,8 +190,12 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
     /// @IgnoredState var closure: (Int, String) -> String = { number, word in "\(number)-\(word)" }
     /// let result: String = closure(5, "times")
     /// print(result) // "5-times"
+    ///
+    /// @IgnoredState var calculator: (Double, Double) -> Double = { $0 + $1 }
+    /// let sum = calculator(3.14, 2.86)
+    /// print(sum) // 6.0
     /// ```
-    func dynamicallyCall<P1, P2, R>(withArguments args: [Any]) -> R
+    public func dynamicallyCall<P1, P2, R>(withArguments args: [Any]) -> R
     where Value == (P1, P2) -> R {
         guard args.count == 2,
               let p1 = args[0] as? P1,
@@ -195,8 +220,14 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
     /// @IgnoredState var closure: (Int, Int, Int) -> Int = { $0 + $1 + $2 }
     /// let result: Int = closure(1, 2, 3)
     /// print(result) // "6"
+    ///
+    /// @IgnoredState var formatter: (String, Int, Bool) -> String = { name, age, isActive in
+    ///     "\(name) (\(age)) - \(isActive ? "Active" : "Inactive")"
+    /// }
+    /// let description = formatter("Alice", 30, true)
+    /// print(description) // "Alice (30) - Active"
     /// ```
-    func dynamicallyCall<P1, P2, P3, R>(withArguments args: [Any]) -> R
+    public func dynamicallyCall<P1, P2, P3, R>(withArguments args: [Any]) -> R
     where Value == (P1, P2, P3) -> R {
         guard args.count == 3,
               let p1 = args[0] as? P1,
@@ -215,3 +246,7 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
         return .init(reflecting: wrappedValue)
     }
 }
+
+#if swift(>=6.0)
+extension IgnoredState: Sendable where Value: Sendable {}
+#endif

@@ -59,7 +59,7 @@ public extension SafeBinding {
     ///     print("New nested property value: \(newValue)")
     /// }
     /// ```
-    func extractNew<New>(_ keyPath: WritableKeyPath<Value, New>) -> AnyPublisher<New, Failure> {
+    func extractNew<New>(_ keyPath: KeyPath<Value, New>) -> AnyPublisher<New, Failure> {
         return justNew(keyPath)
     }
 
@@ -76,7 +76,7 @@ public extension SafeBinding {
     ///     print("New nested property value: \(newValue)")
     /// }
     /// ```
-    func justNew<New>(_ keyPath: WritableKeyPath<Value, New>) -> AnyPublisher<New, Failure> {
+    func justNew<New>(_ keyPath: KeyPath<Value, New>) -> AnyPublisher<New, Failure> {
         return map {
             return $0.new[keyPath: keyPath]
         }.eraseToAnyPublisher()
@@ -113,7 +113,7 @@ public extension SafeBinding {
     /// ```
     func observe<New>(_ keyPath: WritableKeyPath<Value, New>) -> UIBinding<New> {
         let newPublisher: AnyPublisher<DiffedValue<New>, Never> = map { parent in
-            return DiffedValue(old: parent.old?[keyPath: keyPath], new: parent.$bindableNew(keyPath))
+            return parent.map(keyPath: keyPath)
         }
         .eraseToAnyPublisher()
 
@@ -190,7 +190,9 @@ public extension SafeBinding where Value: MutableCollection {
             return collection.new.contains(index: index)
         }
         .map { collection in
-            return .init(old: collection.old?[safe: index], new: collection.$bindableNew.unsafe(index))
+            return .init(old: collection.old?[safe: index],
+                         get: { collection.new[safe: index]! },
+                         set: { collection.new[safe: index]! = $0 })
         }
         .eraseToAnyPublisher()
 
@@ -232,10 +234,14 @@ public extension SafeBinding where Value: MutableCollection {
     func safe(_ index: Value.Index, default defaultValue: @autoclosure @escaping () -> Value.Element) -> UIBinding<Value.Element> {
         let elementPublisher: AnyPublisher<DiffedValue<Value.Element>, Never>? = map { parent in
             guard parent.new.contains(index: index) else {
-                return .init(old: defaultValue(), new: .init(get: defaultValue, set: { _ in }))
+                return .init(old: defaultValue(),
+                             get: defaultValue,
+                             set: { _ in })
             }
 
-            return .init(old: parent.old?[safe: index], new: parent.$bindableNew.safe(index, default: defaultValue()))
+            return .init(old: parent.old?[safe: index],
+                         get: parent.new[safe: index] ?? defaultValue(),
+                         set: { parent.new[safe: index] = $0 })
         }
         .eraseToAnyPublisher()
 

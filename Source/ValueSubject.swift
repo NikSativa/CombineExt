@@ -31,10 +31,14 @@ import Foundation
 public final class ValueSubject<Output>: Combine.Publisher {
     public typealias Failure = Never
 
+    /// The internal subject that emits value changes.
     private let subject: any Subject<Output, Failure>
+    /// Set of active observers for managing subscription lifecycle.
     private var observers: Set<AnyCancellable> = []
+    /// Flag to prevent infinite loops during value propagation.
     private var isIgnoringNewValues: Bool = true
 
+    /// The underlying stored value.
     private var underlyingValue: Output
 
     /// The current value stored in the subject.
@@ -113,6 +117,35 @@ public final class ValueSubject<Output>: Combine.Publisher {
 
         return new
     }
+
+    /// Creates a read-only `ValueSubject` bound to a nested property using a key path.
+    ///
+    /// This method creates a one-way binding that observes changes to a nested property.
+    /// Unlike the writable version, this only allows reading the value, not modifying it.
+    ///
+    /// - Parameter keyPath: A key path to a property of the wrapped value.
+    /// - Returns: A `ValueSubject` bound to the nested property.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let nameSubject = userSubject.observe(keyPath: \.name)
+    /// // nameSubject.wrappedValue is read-only
+    /// ```
+    public func observe<New>(keyPath: KeyPath<Output, New>) -> ValueSubject<New> {
+        let newValue = wrappedValue[keyPath: keyPath]
+        let new = ValueSubject<New>(wrappedValue: newValue)
+
+        map(keyPath)
+            .dropFirst()
+            .sink { [unowned new, weak self] value in
+                self?.isIgnoringNewValues = false
+                new.wrappedValue = value
+                self?.isIgnoringNewValues = true
+            }
+            .store(in: &new.observers)
+
+        return new
+    }
 }
 
 public extension ValueSubject {
@@ -139,6 +172,26 @@ public extension ValueSubject {
         set {
             wrappedValue[keyPath: keyPath] = newValue
         }
+    }
+
+    /// Returns a read-only `ValueSubject` bound to a nested property using dynamic member lookup.
+    ///
+    /// Enables chaining bindings using dot-syntax for read-only access, e.g. `$user.name`.
+    ///
+    /// - Parameter keyPath: A key path from the root `Output` to a nested property.
+    /// - Returns: A read-only `ValueSubject` for the nested property.
+    subscript<V>(dynamicMember keyPath: KeyPath<Output, V>) -> ValueSubject<V> {
+        return observe(keyPath: keyPath)
+    }
+
+    /// Accesses the value of a nested property directly via dynamic member lookup (read-only).
+    ///
+    /// Use this to get nested properties directly, not as bindings.
+    ///
+    /// - Parameter keyPath: A key path to the nested property.
+    /// - Returns: The current value at the given key path.
+    subscript<V>(dynamicMember keyPath: KeyPath<Output, V>) -> V {
+        wrappedValue[keyPath: keyPath]
     }
 }
 

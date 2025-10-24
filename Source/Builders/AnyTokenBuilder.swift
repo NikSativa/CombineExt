@@ -15,6 +15,27 @@ import Foundation
 /// ```
 @resultBuilder
 public struct AnyTokenBuilder<Value> {
+    /// Creates an array of values using the token builder DSL.
+    ///
+    /// This method provides a convenient way to collect multiple values
+    /// using the result builder syntax and convert them into an array.
+    ///
+    /// - Parameter content: A closure that uses the token builder DSL to create values.
+    /// - Returns: An array of collected values.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let tokens: [NotificationToken] = AnyTokenBuilder.build {
+    ///     NotificationCenter.default.add(forName: .didUpdate) { _ in print("Update") }
+    ///     if isEnabled {
+    ///         NotificationCenter.default.add(forName: .didRefresh) { _ in print("Refresh") }
+    ///     }
+    /// }
+    /// ```
+    public static func build(@AnyTokenBuilder content: () -> [Value]) -> [Value] {
+        return content()
+    }
+
     /// Combines multiple arrays of values into a single flattened array.
     ///
     /// - Parameter components: Variadic arrays of values.
