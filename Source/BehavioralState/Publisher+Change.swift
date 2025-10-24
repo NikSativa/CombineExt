@@ -73,6 +73,7 @@ public extension Publisher where Failure == Never {
         }
     }
 
+    #if swift(>=5.10)
     /// Binds changes to a nested property and mutates the parent model in response.
     ///
     /// This version compares old and new values at the key path before invoking the mutation.
@@ -99,6 +100,34 @@ public extension Publisher where Failure == Never {
             onChange(&parent.new)
         }
     }
+    #else
+    /// Binds changes to a nested property and mutates the parent model in response.
+    ///
+    /// This version compares old and new values at the key path before invoking the mutation.
+    /// It is useful for propagating nested property changes to the parent model.
+    ///
+    /// - Parameters:
+    ///   - keyPath: A writable key path to the property to track.
+    ///   - onChange: Closure to mutate the parent model.
+    /// - Returns: A cancellable managing the binding.
+    ///
+    /// - Example:
+    /// ```swift
+    /// publisher.bind(to: \.settings.theme) { parent in
+    ///     parent.updateTheme(to: .dark)
+    /// }
+    /// ```
+    func bindLet<Value>(to keyPath: KeyPath<Value, some Equatable>,
+                        onChange: @escaping (inout Value) -> Void) -> Cancellable
+    where Value: BehavioralStateContract, Output == DiffedValue<Value> {
+        filter { parent in
+            return parent.old?[keyPath: keyPath] != parent.new[keyPath: keyPath]
+        }
+        .sink { parent in
+            onChange(&parent.new)
+        }
+    }
+    #endif
 
     /// Binds changes to the entire model by mutating it in response to each update.
     ///
@@ -120,20 +149,21 @@ public extension Publisher where Failure == Never {
         }
     }
 
-    /// Binds changes to a specific property and reacts with a curried closure.
-    ///
-    /// This method detects changes at the specified key path and passes the parent model
-    /// into a closure that returns another closure handling the property's new value.
-    ///
-    /// - Parameters:
-    ///   - keyPath: A key path to the value being observed.
-    ///   - onChange: A curried closure taking the model and new value.
-    /// - Returns: A cancellable instance managing the binding.
-    ///
-    /// ### Example
-    /// ```swift
-    /// publisher.bind(to: \.name, onChange: Value.onChangeNew(_:))
-    /// ```
+    // Binds changes to a specific property and reacts with a curried closure.
+    //
+    // This method detects changes at the specified key path and passes the parent model
+    // into a closure that returns another closure handling the property's new value.
+    //
+    // - Parameters:
+    //   - keyPath: A key path to the value being observed.
+    //   - onChange: A curried closure taking the model and new value.
+    // - Returns: A cancellable instance managing the binding.
+    //
+    // ### Example
+    // ```swift
+    // publisher.bind(to: \.name, onChange: Value.onChangeNew(_:))
+    // ```
+    #if swift(>=5.10)
     func bind<Value, NEW>(to keyPath: KeyPath<Value, NEW>,
                           onChange: @escaping (Value) -> (NEW) -> Void) -> Cancellable
     where Value: BehavioralStateContract, Output == DiffedValue<Value>, NEW: Equatable {
@@ -144,20 +174,33 @@ public extension Publisher where Failure == Never {
             onChange(parent.new)(parent.new[keyPath: keyPath])
         }
     }
+    #else
+    func bindLet<Value, NEW>(to keyPath: KeyPath<Value, NEW>,
+                             onChange: @escaping (Value) -> (NEW) -> Void) -> Cancellable
+    where Value: BehavioralStateContract, Output == DiffedValue<Value>, NEW: Equatable {
+        filter { parent in
+            return parent.old?[keyPath: keyPath] != parent.new[keyPath: keyPath]
+        }
+        .sink { parent in
+            onChange(parent.new)(parent.new[keyPath: keyPath])
+        }
+    }
+    #endif
 
-    /// Binds changes to a specific property and triggers a deferred closure.
-    ///
-    /// This form allows logic to execute after property changes without arguments.
-    ///
-    /// - Parameters:
-    ///   - keyPath: The path to the property being tracked.
-    ///   - onChange: A closure returning another closure executed upon change.
-    /// - Returns: A cancellable binding subscription.
-    ///
-    /// ### Example
-    /// ```swift
-    /// publisher.bind(to: \.name, onChange: Value.onChangeNew)
-    /// ```
+    // Binds changes to a specific property and triggers a deferred closure.
+    //
+    // This form allows logic to execute after property changes without arguments.
+    //
+    // - Parameters:
+    //   - keyPath: The path to the property being tracked.
+    //   - onChange: A closure returning another closure executed upon change.
+    // - Returns: A cancellable binding subscription.
+    //
+    // ### Example
+    // ```swift
+    // publisher.bind(to: \.name, onChange: Value.onChangeNew)
+    // ```
+    #if swift(>=5.10)
     func bind<Value>(to keyPath: KeyPath<Value, some Equatable>,
                      onChange: @escaping (Value) -> () -> Void) -> Cancellable
     where Value: BehavioralStateContract, Output == DiffedValue<Value> {
@@ -168,6 +211,18 @@ public extension Publisher where Failure == Never {
             onChange(parent.new)()
         }
     }
+    #else
+    func bindLet<Value>(to keyPath: KeyPath<Value, some Equatable>,
+                        onChange: @escaping (Value) -> () -> Void) -> Cancellable
+    where Value: BehavioralStateContract, Output == DiffedValue<Value> {
+        filter { parent in
+            return parent.old?[keyPath: keyPath] != parent.new[keyPath: keyPath]
+        }
+        .sink { parent in
+            onChange(parent.new)()
+        }
+    }
+    #endif
 
     /// Binds changes to a specific property and provides both the parent model and the new property value.
     ///

@@ -21,38 +21,72 @@ concurrency:
   group: ${{ github.ref_name }}
   cancel-in-progress: true
 jobs:
-  macOS:
-    name: "macOS ${{ matrix.xcode }} ${{ matrix.swift }}"
+  test:
+    name: "${{ matrix.platform }} ${{ matrix.xcode }} ${{ matrix.swift }}"
     runs-on: ${{ matrix.runsOn }}
     env:
       DEVELOPER_DIR: "/Applications/${{ matrix.xcode }}.app/Contents/Developer"
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
-          - xcode: "Xcode_16.3"
+          - platform: "macOS"
+            xcode: "Xcode_16.3"
             runsOn: macOS-15
             swift: "6.1"
             outputFilter: xcbeautify --renderer github-actions
-          - xcode: "Xcode_16.0"
+          - platform: "macOS"
+            xcode: "Xcode_16.0"
             runsOn: macOS-15
             swift: "6.0"
             outputFilter: xcbeautify --renderer github-actions
-          - xcode: "Xcode_15.4"
+          - platform: "macOS"
+            xcode: "Xcode_15.4"
             runsOn: macOS-14
             swift: "5.10"
             outputFilter: xcbeautify --renderer github-actions
-          - xcode: "Xcode_15.2"
+          - platform: "macOS"
+            xcode: "Xcode_15.2"
             runsOn: macOS-14
             swift: "5.9"
             outputFilter: xcbeautify --renderer github-actions
+          - platform: "iOS"
+            xcode: "Xcode_16.3"
+            runsOn: macOS-15
+            swift: "6.1"
+            outputFilter: xcbeautify --renderer github-actions
+          - platform: "tvOS"
+            xcode: "Xcode_16.3"
+            runsOn: macOS-15
+            swift: "6.1"
+            outputFilter: xcbeautify --renderer github-actions
+          - platform: "watchOS"
+            xcode: "Xcode_16.3"
+            runsOn: macOS-15
+            swift: "6.1"
+            outputFilter: xcbeautify --renderer github-actions
     steps:
+      - uses: actions/checkout@v4
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+      - name: Cache Xcode
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-xcode-${{ matrix.xcode }}
       - uses: swift-actions/setup-swift@v2
         with:
           swift-version: ${{ matrix.swift }}
-      - uses: actions/checkout@v4
-      - name: "Build ${{ matrix.xcode }} ${{ matrix.swift }}"
+      - name: Lint
+        run: swift package resolve
+      - name: "Build ${{ matrix.platform }} ${{ matrix.xcode }} ${{ matrix.swift }}"
         run: swift build -v | ${{ matrix.outputFilter }}
-      - name: "Test ${{ matrix.xcode }} ${{ matrix.swift }}"
+      - name: "Test ${{ matrix.platform }} ${{ matrix.xcode }} ${{ matrix.swift }}"
         run: swift test -v | ${{ matrix.outputFilter }}
+      - name: Test coverage
+        if: matrix.swift != '5.9'
+        run: swift test --enable-code-coverage
