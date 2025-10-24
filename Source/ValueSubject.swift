@@ -222,6 +222,36 @@ public extension ValueSubject where Output: ExpressibleByDictionaryLiteral {
     }
 }
 
+@available(iOS 13.0, macOS 10.15, *)
+extension ValueSubject: ObservableObject {
+    /// The objectWillChange publisher required by ObservableObject.
+    ///
+    /// This publisher emits before the wrapped value changes, enabling SwiftUI
+    /// to update views reactively when the value is modified.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @ValueSubject var counter = 0
+    ///
+    /// // SwiftUI will automatically update when counter changes
+    /// struct ContentView: View {
+    ///     @StateObject var viewModel = ViewModel()
+    ///
+    ///     var body: some View {
+    ///         Text("Count: \(viewModel.counter)")
+    ///             .onTapGesture {
+    ///                 viewModel.counter += 1
+    ///             }
+    ///     }
+    /// }
+    /// ```
+    public var objectWillChange: AnyPublisher<Void, Never> {
+        return projectedValue
+            .map { _ in () }
+            .eraseToAnyPublisher()
+    }
+}
+
 #if swift(>=6.0)
 extension ValueSubject: @unchecked Sendable {}
 #endif

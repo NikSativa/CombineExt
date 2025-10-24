@@ -33,7 +33,118 @@ https://swiftpackageindex.com/NikSativa/collection.json
 - **Publisher Extensions**: `filterNils()`, `mapVoid()`, and advanced binding methods
 - **Declarative DSL**: `SubscriptionBuilder` and `AnyTokenBuilder` for clean reactive code
 - **Dynamic Callable**: Property wrapper syntax for intuitive API usage
-- **Comprehensive Testing**: 156+ tests ensuring reliability and stability
+- **SwiftUI Integration**: Full `ObservableObject` support for seamless SwiftUI compatibility
+- **Comprehensive Testing**: 200+ tests ensuring reliability and stability
+
+## 🎯 SwiftUI Integration
+
+All property wrappers now support `ObservableObject` for seamless SwiftUI integration:
+
+```swift
+import SwiftUI
+import CombineExt
+
+struct ContentView: View {
+    @StateObject private var viewModel = ViewModel()
+    
+    var body: some View {
+        VStack {
+            Text("Count: \(viewModel.counter)")
+            Text("Name: \(viewModel.user.name)")
+            Text("Age: \(viewModel.user.age)")
+            
+            Button("Increment") {
+                viewModel.counter += 1
+            }
+            
+            Button("Update User") {
+                viewModel.user.name = "Bob"
+                viewModel.user.age += 1
+            }
+        }
+    }
+}
+
+class ViewModel: ObservableObject {
+    @ValueSubject var counter = 0
+    @UIState var user = User(name: "Alice", age: 30)
+    @IgnoredState var cache = DataCache()
+    
+    // SwiftUI automatically updates when any of these properties change
+}
+
+struct User: Equatable {
+    var name: String
+    var age: Int
+}
+```
+
+### Advanced SwiftUI Patterns
+
+```swift
+import SwiftUI
+import CombineExt
+
+// Complex state management with ManagedState
+struct UserProfileModel: BehavioralStateContract {
+    var user: User
+    var isLoading: Bool = false
+    var errorMessage: String?
+    
+    mutating func applyRules() {
+        // Auto-validate user data
+        if user.age < 0 { user.age = 0 }
+        if user.name.isEmpty { user.name = "Anonymous" }
+    }
+    
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+        // React to user changes
+        state.bind(to: \.user) { model in
+            model.isLoading = false
+        }
+    }
+}
+
+struct UserProfileView: View {
+    @StateObject private var viewModel = UserProfileViewModel()
+    
+    var body: some View {
+        VStack {
+            if viewModel.model.isLoading {
+                ProgressView("Loading...")
+            } else if let error = viewModel.model.errorMessage {
+                Text("Error: \(error)")
+                    .foregroundColor(.red)
+            } else {
+                VStack {
+                    TextField("Name", text: $viewModel.model.user.name)
+                    Stepper("Age: \(viewModel.model.user.age)", 
+                           value: $viewModel.model.user.age)
+                    Text("Status: \(viewModel.model.user.name.isEmpty ? "Invalid" : "Valid")")
+                }
+            }
+        }
+        .onAppear {
+            viewModel.loadUser()
+        }
+    }
+}
+
+class UserProfileViewModel: ObservableObject {
+    @ManagedState var model = UserProfileModel(
+        user: User(name: "", age: 0)
+    )
+    
+    func loadUser() {
+        model.isLoading = true
+        // Simulate network call
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            self.model.user = User(name: "John Doe", age: 30)
+        }
+    }
+}
+```
 
 ## 🧠 `ManagedState` for Reactive Models
 
