@@ -238,6 +238,40 @@ extension UIState: CustomLocalizedStringResourceConvertible where Value: CustomL
     }
 }
 
+@available(iOS 13.0, macOS 10.15, *)
+extension UIState: ObservableObject {
+    /// The objectWillChange publisher required by ObservableObject.
+    ///
+    /// This publisher emits before the wrapped value changes, enabling SwiftUI
+    /// to update views reactively when the state is modified.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @UIState var user = User(name: "Alice", age: 30)
+    ///
+    /// // SwiftUI will automatically update when user changes
+    /// struct ContentView: View {
+    ///     @StateObject var viewModel = ViewModel()
+    ///
+    ///     var body: some View {
+    ///         VStack {
+    ///             Text("Name: \(viewModel.user.name)")
+    ///             Text("Age: \(viewModel.user.age)")
+    ///             Button("Update Age") {
+    ///                 viewModel.user.age += 1
+    ///             }
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    public var objectWillChange: AnyPublisher<Void, Never> {
+        return subject
+            .removeDuplicates()
+            .map { _ in () }
+            .eraseToAnyPublisher()
+    }
+}
+
 #if swift(>=6.0)
 extension UIState: @unchecked Sendable {}
 #endif

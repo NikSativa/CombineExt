@@ -81,6 +81,16 @@ public var ManagedStateCyclicDependencyMaxDepth: Int = 100
 public var ManagedStateDefaultLock: ManagedStateLock = .synced
 #endif
 
+@available(iOS 13.0, macOS 10.15, *)
+extension ManagedState: ObservableObject {
+    public var objectWillChange: AnyPublisher<Void, Never> {
+        return publisher
+            .removeDuplicates()
+            .map { _ in () }
+            .eraseToAnyPublisher()
+    }
+}
+
 /// Defines the locking mechanism used within a `ManagedState` instance.
 ///
 /// Use this enum to configure how thread safety is enforced when reading and writing state.
