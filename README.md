@@ -33,7 +33,8 @@ https://swiftpackageindex.com/NikSativa/collection.json
 - **Publisher Extensions**: `filterNils()`, `mapVoid()`, and advanced binding methods
 - **Declarative DSL**: `SubscriptionBuilder` and `AnyTokenBuilder` for clean reactive code
 - **Dynamic Callable**: Property wrapper syntax for intuitive API usage
-- **Comprehensive Testing**: 156+ tests ensuring reliability and stability
+- **Utility Functions**: `differs()` for efficient value comparison with key paths
+- **Comprehensive Testing**: 216+ tests ensuring reliability and stability
 
 ## 🧠 `ManagedState` for Reactive Models
 
@@ -387,6 +388,36 @@ let bindings = $items.bindingArray()
 bindings[0].wrappedValue = "Updated"
 ```
 
+## 🛠️ Utility Functions
+
+### `differs()` for Efficient Value Comparison
+
+Compare values at specific key paths efficiently with inlined performance:
+
+```swift
+struct Person {
+    let name: String
+    let age: Int
+}
+
+let person1 = Person(name: "Alice", age: 30)
+let person2 = Person(name: "Bob", age: 25)
+
+// Check if specific properties differ
+let nameDiffers = differs(lhs: person1, rhs: person2, keyPath: \.name)  // true
+let ageDiffers = differs(lhs: person1, rhs: person2, keyPath: \.age)    // true
+
+// Use in reactive bindings for performance
+state.bindDiffed { model in
+    if model.hasChanged(keyPath: \.count) {
+        // Only update when count actually changed
+        model.lastUpdated = Date()
+    }
+}
+```
+
+**Performance Note**: This function is marked with `@inline(__always)` for optimal performance in reactive scenarios where it's called frequently.
+
 ## 🏗️ Helper Types
 
 ### EventSubject and ActionSubject
@@ -585,7 +616,7 @@ ManagedStateCyclicDependencyMaxDepth = 50
 
 ## 🧪 Testing & Quality Assurance
 
-CombineExt includes comprehensive test coverage with **156+ tests** ensuring reliability and stability:
+CombineExt includes comprehensive test coverage with **216+ tests** ensuring reliability and stability:
 
 ### Test Coverage
 - **Property Wrappers**: `@ManagedState`, `@UIState`, `@UIBinding`, `@ValueSubject`, `@IgnoredState`
@@ -595,6 +626,9 @@ CombineExt includes comprehensive test coverage with **156+ tests** ensuring rel
 - **Thread Safety**: Concurrent access patterns, race condition prevention
 - **Edge Cases**: Memory management, performance, error scenarios
 - **Result Builders**: `SubscriptionBuilder`, `AnyTokenBuilder` functionality
+- **Utility Functions**: `differs()` with comprehensive test coverage
+- **Protocol Conformance**: `CustomStringConvertible`, `CustomDebugStringConvertible`, `CustomLocalizedStringResourceConvertible`
+- **DiffedValue**: `map(keyPath:)`, `hasChanged(keyPath:)` methods with full testing
 
 ### Running Tests
 ```bash
@@ -614,11 +648,13 @@ CombineExt simplifies building reactive UIKit applications with a comprehensive 
 - **Advanced Binding**: Rich binding DSL with both `WritableKeyPath` and `KeyPath` support
 - **Extended Publishers**: `CombineLatest5/6`, `Zip5/6` for complex data flows
 - **Dynamic Callable**: Intuitive property wrapper syntax for all reactive types
+- **Utility Functions**: `differs()` for efficient value comparison with key paths
 - **Platform Support**: iOS 13+, macOS 11+, tvOS 13+, watchOS 6+, visionOS 1+
 - **Clean Architecture**: Perfect for MVVM/MVI patterns with type-safe, testable code
 - **SwiftUI Compatibility**: Works seamlessly with SwiftUI while maintaining UIKit flexibility
-- **Comprehensive Testing**: 156+ tests ensuring reliability and stability
+- **Comprehensive Testing**: 216+ tests ensuring reliability and stability
 - **Full Documentation**: Complete API documentation with examples and thread safety warnings
+- **Protocol Conformance**: Full support for `CustomStringConvertible`, `CustomDebugStringConvertible`, and `CustomLocalizedStringResourceConvertible`
 
 ## 💬 Contributing
 

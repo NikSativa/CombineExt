@@ -241,7 +241,9 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
 
     /// CustomReflectable conformance.
     ///
-    /// Provides a mirror reflecting the wrapped value.
+    /// Provides a mirror reflecting the wrapped value for debugging and introspection.
+    ///
+    /// - Returns: A mirror that reflects the wrapped value.
     public var customMirror: Mirror {
         return .init(reflecting: wrappedValue)
     }

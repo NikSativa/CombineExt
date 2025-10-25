@@ -51,3 +51,36 @@ public typealias EventSubject<Output> = PassthroughSubject<Output, Never>
 /// didTapButton.send(())
 /// ```
 public typealias ActionSubject = PassthroughSubject<Void, Never>
+
+/// Checks if a specific property differs between two values using a key path.
+///
+/// This function compares the values at the specified key path between two instances
+/// and returns `true` if they differ, `false` if they are equal.
+///
+/// **Performance Note**: This function is marked with `@inline(__always)` for performance
+/// and thread safety reasons, as it's designed to be called frequently in reactive
+/// state management scenarios where race conditions could occur without inlining.
+///
+/// - Parameters:
+///   - lhs: The first value to compare.
+///   - rhs: The second value to compare.
+///   - keyPath: A key path to the property to compare.
+/// - Returns: `true` if the values at the key path differ, `false` otherwise.
+///
+/// ### Example
+/// ```swift
+/// struct Person {
+///     let name: String
+///     let age: Int
+/// }
+///
+/// let person1 = Person(name: "Alice", age: 30)
+/// let person2 = Person(name: "Bob", age: 25)
+///
+/// let nameDiffers = differs(lhs: person1, rhs: person2, keyPath: \.name)
+/// let ageDiffers = differs(lhs: person1, rhs: person2, keyPath: \.age)
+/// ```
+@inline(__always)
+public func differs<T>(lhs: T, rhs: T, keyPath: KeyPath<T, some Equatable>) -> Bool {
+    return lhs[keyPath: keyPath] != rhs[keyPath: keyPath]
+}

@@ -505,12 +505,24 @@ extension ManagedState: Hashable where Value: Hashable {
 }
 
 extension ManagedState: CustomStringConvertible where Value: CustomStringConvertible {
+    /// A textual representation of the managed value.
+    ///
+    /// This property forwards the description from the managed value,
+    /// providing a string representation suitable for display purposes.
+    ///
+    /// - Returns: A string representation of the managed value.
     public var description: String {
         return wrappedValue.description
     }
 }
 
 extension ManagedState: CustomDebugStringConvertible where Value: CustomDebugStringConvertible {
+    /// A textual representation of the managed value, suitable for debugging.
+    ///
+    /// This property forwards the debug description from the managed value,
+    /// providing detailed information useful for debugging purposes.
+    ///
+    /// - Returns: A debug string representation of the managed value.
     public var debugDescription: String {
         return wrappedValue.debugDescription
     }
@@ -518,6 +530,12 @@ extension ManagedState: CustomDebugStringConvertible where Value: CustomDebugStr
 
 @available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
 extension ManagedState: CustomLocalizedStringResourceConvertible where Value: CustomLocalizedStringResourceConvertible {
+    /// A localized string resource representation of the managed value.
+    ///
+    /// This property forwards the localized string resource from the managed value,
+    /// enabling localization support for the managed state.
+    ///
+    /// - Returns: A localized string resource representation of the managed value.
     public var localizedStringResource: LocalizedStringResource {
         return wrappedValue.localizedStringResource
     }

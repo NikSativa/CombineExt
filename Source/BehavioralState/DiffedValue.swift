@@ -75,10 +75,96 @@ public struct DiffedValue<Value> {
         self.set = { binding.wrappedValue = $0 }
     }
 
+    /// Maps the diffed value to a nested property using a writable key path.
+    ///
+    /// This method creates a new `DiffedValue` that tracks changes to a specific property
+    /// of the wrapped value, enabling fine-grained observation of nested state changes.
+    ///
+    /// - Parameter keyPath: A writable key path to the nested property to observe.
+    /// - Returns: A new `DiffedValue` that tracks changes to the specified property.
+    ///
+    /// ### Example
+    /// ```swift
+    /// struct User {
+    ///     var name: String
+    ///     var age: Int
+    /// }
+    ///
+    /// let userDiff = DiffedValue(old: User(name: "Alice", age: 25),
+    ///                           new: User(name: "Bob", age: 30))
+    /// let nameDiff = userDiff.map(keyPath: \.name)
+    /// print(nameDiff.old) // "Alice"
+    /// print(nameDiff.new) // "Bob"
+    /// ```
     public func map<V>(keyPath: WritableKeyPath<Value, V>) -> DiffedValue<V> {
         return .init(old: old?[keyPath: keyPath],
                      get: new[keyPath: keyPath],
                      set: { new[keyPath: keyPath] = $0 })
+    }
+
+    /// Checks if a specific property has changed between the old and new values.
+    ///
+    /// This method compares the values at the specified key path between the old and new
+    /// values and returns `true` if they differ, `false` if they are equal.
+    ///
+    /// - Parameter keyPath: A key path to the property to compare.
+    /// - Returns: `true` if the property has changed, `false` otherwise.
+    ///            Returns `true` if there is no old value (initial state).
+    ///
+    /// ### Example
+    /// ```swift
+    /// struct User {
+    ///     var name: String
+    ///     var age: Int
+    /// }
+    ///
+    /// let userDiff = DiffedValue(old: User(name: "Alice", age: 25),
+    ///                           new: User(name: "Bob", age: 25))
+    /// print(userDiff.hasChanged(keyPath: \.name)) // true
+    /// print(userDiff.hasChanged(keyPath: \.age))  // false
+    /// ```
+    public func hasChanged(keyPath: KeyPath<Value, some Equatable>) -> Bool {
+        guard let old else {
+            return true
+        }
+
+        return differs(lhs: old, rhs: new, keyPath: keyPath)
+    }
+
+    /// Executes a closure when a specific property has changed between old and new values.
+    ///
+    /// This method provides a convenient way to perform side effects only when a particular
+    /// property has actually changed, avoiding unnecessary work when values remain the same.
+    ///
+    /// - Parameters:
+    ///   - keyPath: A key path to the property to monitor for changes.
+    ///   - workItem: A closure that receives the old and new values of the property.
+    ///               The old value may be `nil` if this is the initial state.
+    ///
+    /// ### Example
+    /// ```swift
+    /// struct User {
+    ///     var name: String
+    ///     var age: Int
+    /// }
+    ///
+    /// let userDiff = DiffedValue(old: User(name: "Alice", age: 25),
+    ///                           new: User(name: "Bob", age: 25))
+    ///
+    /// userDiff.ifChanged(keyPath: \.name) { oldName, newName in
+    ///     print("Name changed from '\(oldName ?? "nil")' to '\(newName)'")
+    /// }
+    /// // Prints: "Name changed from 'Alice' to 'Bob'"
+    ///
+    /// userDiff.ifChanged(keyPath: \.age) { oldAge, newAge in
+    ///     print("Age changed from \(oldAge ?? 0) to \(newAge)")
+    /// }
+    /// // Nothing printed - age didn't change
+    /// ```
+    public func ifChanged<V: Equatable>(keyPath: KeyPath<Value, V>, do workItem: (_ old: V?, _ new: V) -> Void) {
+        if hasChanged(keyPath: keyPath) {
+            workItem(old?[keyPath: keyPath], new[keyPath: keyPath])
+        }
     }
 }
 
@@ -112,6 +198,12 @@ public extension DiffedValue {
 }
 
 extension DiffedValue: CustomDebugStringConvertible {
+    /// A textual representation of this diffed value, suitable for debugging.
+    ///
+    /// This property provides a detailed description of both the old and new values
+    /// in the diffed value, making it useful for debugging and logging purposes.
+    ///
+    /// - Returns: A string representation showing both old and new values.
     public var debugDescription: String {
         return "DiffedValue(old: \(String(describing: old)), new: \(new))"
     }
@@ -124,6 +216,12 @@ extension DiffedValue: Equatable where Value: Equatable {
 }
 
 extension DiffedValue: Hashable where Value: Hashable {
+    /// Hashes the essential components of this diffed value.
+    ///
+    /// This method combines the hash values of both the old and new values
+    /// to create a unique hash for the diffed value.
+    ///
+    /// - Parameter hasher: The hasher to use when combining the components.
     public func hash(into hasher: inout Hasher) {
         hasher.combine(old)
         hasher.combine(new)

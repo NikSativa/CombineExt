@@ -202,12 +202,24 @@ extension UIState: Hashable where Value: Hashable {
 }
 
 extension UIState: CustomStringConvertible where Value: CustomStringConvertible {
+    /// A textual representation of the wrapped value.
+    ///
+    /// This property forwards the description from the wrapped value,
+    /// providing a string representation suitable for display purposes.
+    ///
+    /// - Returns: A string representation of the wrapped value.
     public var description: String {
         return wrappedValue.description
     }
 }
 
 extension UIState: CustomDebugStringConvertible where Value: CustomDebugStringConvertible {
+    /// A textual representation of the wrapped value, suitable for debugging.
+    ///
+    /// This property forwards the debug description from the wrapped value,
+    /// providing detailed information useful for debugging purposes.
+    ///
+    /// - Returns: A debug string representation of the wrapped value.
     public var debugDescription: String {
         return wrappedValue.debugDescription
     }
@@ -215,6 +227,12 @@ extension UIState: CustomDebugStringConvertible where Value: CustomDebugStringCo
 
 @available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
 extension UIState: CustomLocalizedStringResourceConvertible where Value: CustomLocalizedStringResourceConvertible {
+    /// A localized string resource representation of the wrapped value.
+    ///
+    /// This property forwards the localized string resource from the wrapped value,
+    /// enabling localization support for the UI state.
+    ///
+    /// - Returns: A localized string resource representation of the wrapped value.
     public var localizedStringResource: LocalizedStringResource {
         return wrappedValue.localizedStringResource
     }

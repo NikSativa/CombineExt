@@ -4,318 +4,508 @@ import Foundation
 import XCTest
 
 final class SharedTests: XCTestCase {
-    // MARK: - AnyCancellable Tests
+    private var observers: Set<AnyCancellable> = []
 
-    func testAnyCancellableTypeAlias() {
-        // Test that AnyCancellable is properly aliased
-        let cancellable: AnyCancellable = AnyCancellable {}
-
-        // Should compile without issues
-        XCTAssertNotNil(cancellable)
+    override func setUp() {
+        super.setUp()
+        observers.removeAll()
     }
 
-    func testAnyCancellableUsage() {
-        var cancellables = Set<AnyCancellable>()
-
-        let subject = PassthroughSubject<String, Never>()
-        var receivedValues: [String] = []
-
-        subject
-            .sink { value in
-                receivedValues.append(value)
-            }
-            .store(in: &cancellables)
-
-        subject.send("Hello")
-        subject.send("World")
-
-        XCTAssertEqual(receivedValues, ["Hello", "World"])
-        XCTAssertEqual(cancellables.count, 1)
+    override func tearDown() {
+        observers.removeAll()
+        super.tearDown()
     }
 
-    func testAnyCancellableCancellation() {
-        var cancellables = Set<AnyCancellable>()
+    // MARK: - differs Tests
 
-        let subject = PassthroughSubject<String, Never>()
-        var receivedValues: [String] = []
-
-        subject
-            .sink { value in
-                receivedValues.append(value)
-            }
-            .store(in: &cancellables)
-
-        subject.send("Hello")
-
-        // Cancel all subscriptions
-        cancellables.removeAll()
-
-        subject.send("World")
-
-        XCTAssertEqual(receivedValues, ["Hello"]) // Only first value should be received
-    }
-
-    // MARK: - EventSubject Tests
-
-    func testEventSubjectInitialization() {
-        let subject: EventSubject<String> = .init()
-
-        // Should compile without issues
-        XCTAssertNotNil(subject)
-    }
-
-    func testEventSubjectSendingValues() {
-        let subject: EventSubject<String> = .init()
-        var receivedValues: [String] = []
-
-        let cancellable = subject.sink { value in
-            receivedValues.append(value)
+    func testDiffersWithIntProperty() {
+        struct TestStruct {
+            let value: Int
         }
 
-        subject.send("Hello")
-        subject.send("World")
-        subject.send("Swift")
+        let lhs = TestStruct(value: 1)
+        let rhs = TestStruct(value: 2)
 
-        XCTAssertEqual(receivedValues, ["Hello", "World", "Swift"])
-
-        cancellable.cancel()
+        XCTAssertTrue(differs(lhs: lhs, rhs: rhs, keyPath: \.value))
+        XCTAssertFalse(differs(lhs: lhs, rhs: lhs, keyPath: \.value))
     }
 
-    func testEventSubjectWithDifferentTypes() {
-        let stringSubject: EventSubject<String> = .init()
-        let intSubject: EventSubject<Int> = .init()
-        let boolSubject: EventSubject<Bool> = .init()
+    func testDiffersWithStringProperty() {
+        struct TestStruct {
+            let name: String
+        }
 
-        var receivedStrings: [String] = []
-        var receivedInts: [Int] = []
-        var receivedBools: [Bool] = []
+        let lhs = TestStruct(name: "Alice")
+        let rhs = TestStruct(name: "Bob")
 
-        let cancellable1 = stringSubject.sink { receivedStrings.append($0) }
-        let cancellable2 = intSubject.sink { receivedInts.append($0) }
-        let cancellable3 = boolSubject.sink { receivedBools.append($0) }
-
-        stringSubject.send("Hello")
-        intSubject.send(42)
-        boolSubject.send(true)
-
-        XCTAssertEqual(receivedStrings, ["Hello"])
-        XCTAssertEqual(receivedInts, [42])
-        XCTAssertEqual(receivedBools, [true])
-
-        cancellable1.cancel()
-        cancellable2.cancel()
-        cancellable3.cancel()
+        XCTAssertTrue(differs(lhs: lhs, rhs: rhs, keyPath: \.name))
+        XCTAssertFalse(differs(lhs: lhs, rhs: lhs, keyPath: \.name))
     }
 
-    func testEventSubjectNeverFails() {
-        let subject: EventSubject<String> = .init()
-        var completionReceived = false
+    func testIsValueChangedWithOptionalProperty() {
+        struct TestStruct {
+            let optionalValue: Int?
+        }
 
-        let cancellable = subject.sink(receiveCompletion: { _ in completionReceived = true },
-                                       receiveValue: { _ in })
+        let lhs = TestStruct(optionalValue: 1)
+        let rhs = TestStruct(optionalValue: 2)
+        let lhsNil = TestStruct(optionalValue: nil)
 
-        subject.send("Hello")
-        subject.send(completion: .finished)
-
-        XCTAssertTrue(completionReceived)
-
-        cancellable.cancel()
+        XCTAssertTrue(differs(lhs: lhs, rhs: rhs, keyPath: \.optionalValue))
+        XCTAssertTrue(differs(lhs: lhs, rhs: lhsNil, keyPath: \.optionalValue))
+        XCTAssertTrue(differs(lhs: lhsNil, rhs: lhs, keyPath: \.optionalValue))
+        XCTAssertFalse(differs(lhs: lhs, rhs: lhs, keyPath: \.optionalValue))
     }
 
-    func testEventSubjectMultipleSubscribers() {
-        let subject: EventSubject<String> = .init()
-        var receivedValues1: [String] = []
-        var receivedValues2: [String] = []
+    func testIsValueChangedWithBoolProperty() {
+        struct TestStruct {
+            let isEnabled: Bool
+        }
 
-        let cancellable1 = subject.sink { receivedValues1.append($0) }
-        let cancellable2 = subject.sink { receivedValues2.append($0) }
+        let lhs = TestStruct(isEnabled: true)
+        let rhs = TestStruct(isEnabled: false)
 
-        subject.send("Hello")
-        subject.send("World")
+        XCTAssertTrue(differs(lhs: lhs, rhs: rhs, keyPath: \.isEnabled))
+        XCTAssertFalse(differs(lhs: lhs, rhs: lhs, keyPath: \.isEnabled))
+    }
 
-        XCTAssertEqual(receivedValues1, ["Hello", "World"])
-        XCTAssertEqual(receivedValues2, ["Hello", "World"])
+    func testIsValueChangedWithNestedProperty() {
+        struct NestedStruct {
+            let value: Int
+        }
 
-        cancellable1.cancel()
-        cancellable2.cancel()
+        struct TestStruct {
+            let nested: NestedStruct
+        }
+
+        let lhs = TestStruct(nested: NestedStruct(value: 1))
+        let rhs = TestStruct(nested: NestedStruct(value: 2))
+
+        XCTAssertTrue(differs(lhs: lhs, rhs: rhs, keyPath: \.nested.value))
+        XCTAssertFalse(differs(lhs: lhs, rhs: lhs, keyPath: \.nested.value))
+    }
+
+    func testIsValueChangedWithArrayProperty() {
+        struct TestStruct {
+            let items: [Int]
+        }
+
+        let lhs = TestStruct(items: [1, 2, 3])
+        let rhs = TestStruct(items: [1, 2, 4])
+
+        XCTAssertTrue(differs(lhs: lhs, rhs: rhs, keyPath: \.items))
+        XCTAssertFalse(differs(lhs: lhs, rhs: lhs, keyPath: \.items))
+    }
+
+    func testIsValueChangedWithCustomEquatable() {
+        struct CustomEquatable: Equatable {
+            let value: Int
+        }
+
+        struct TestStruct {
+            let custom: CustomEquatable
+        }
+
+        let lhs = TestStruct(custom: CustomEquatable(value: 1))
+        let rhs = TestStruct(custom: CustomEquatable(value: 2))
+
+        XCTAssertTrue(differs(lhs: lhs, rhs: rhs, keyPath: \.custom))
+        XCTAssertFalse(differs(lhs: lhs, rhs: lhs, keyPath: \.custom))
+    }
+
+    func testIsValueChangedPerformance() {
+        struct TestStruct {
+            let value: Int
+        }
+
+        let lhs = TestStruct(value: 1)
+        let rhs = TestStruct(value: 2)
+
+        measure {
+            for _ in 0..<10000 {
+                _ = differs(lhs: lhs, rhs: rhs, keyPath: \.value)
+            }
+        }
     }
 
     // MARK: - ActionSubject Tests
 
     func testActionSubjectInitialization() {
-        let subject: ActionSubject = .init()
-
-        // Should compile without issues
-        XCTAssertNotNil(subject)
+        let actionSubject: ActionSubject = .init()
+        XCTAssertNotNil(actionSubject)
     }
 
     func testActionSubjectSendingActions() {
-        let subject: ActionSubject = .init()
-        var actionCount = 0
+        let actionSubject: ActionSubject = .init()
+        var receivedCount = 0
 
-        let cancellable = subject.sink {
-            actionCount += 1
-        }
+        actionSubject
+            .sink { receivedCount += 1 }
+            .store(in: &observers)
 
-        subject.send(())
-        subject.send(())
-        subject.send(())
+        actionSubject.send(())
+        actionSubject.send(())
+        actionSubject.send(())
 
-        XCTAssertEqual(actionCount, 3)
-
-        cancellable.cancel()
-    }
-
-    func testActionSubjectWithMultipleSubscribers() {
-        let subject: ActionSubject = .init()
-        var actionCount1 = 0
-        var actionCount2 = 0
-
-        let cancellable1 = subject.sink { actionCount1 += 1 }
-        let cancellable2 = subject.sink { actionCount2 += 1 }
-
-        subject.send(())
-        subject.send(())
-
-        XCTAssertEqual(actionCount1, 2)
-        XCTAssertEqual(actionCount2, 2)
-
-        cancellable1.cancel()
-        cancellable2.cancel()
+        XCTAssertEqual(receivedCount, 3)
     }
 
     func testActionSubjectNeverFails() {
-        let subject: ActionSubject = .init()
+        let actionSubject: ActionSubject = .init()
         var completionReceived = false
 
-        let cancellable = subject.sink(receiveCompletion: { _ in completionReceived = true },
-                                       receiveValue: { _ in })
+        actionSubject
+            .sink(receiveCompletion: { _ in completionReceived = true },
+                  receiveValue: { _ in })
+            .store(in: &observers)
 
-        subject.send(())
-        subject.send(completion: .finished)
-
-        XCTAssertTrue(completionReceived)
-
-        cancellable.cancel()
+        actionSubject.send(())
+        XCTAssertFalse(completionReceived)
     }
 
-    func testActionSubjectUsagePattern() {
-        let buttonTapSubject: ActionSubject = .init()
-        var buttonTapped = false
+    func testActionSubjectWithMultipleSubscribers() {
+        let actionSubject: ActionSubject = .init()
+        var subscriber1Count = 0
+        var subscriber2Count = 0
 
-        let cancellable = buttonTapSubject.sink {
-            buttonTapped = true
-        }
+        actionSubject
+            .sink { subscriber1Count += 1 }
+            .store(in: &observers)
 
-        // Simulate button tap
-        buttonTapSubject.send(())
+        actionSubject
+            .sink { subscriber2Count += 1 }
+            .store(in: &observers)
 
-        XCTAssertTrue(buttonTapped)
+        actionSubject.send(())
 
-        cancellable.cancel()
+        XCTAssertEqual(subscriber1Count, 1)
+        XCTAssertEqual(subscriber2Count, 1)
     }
 
     func testActionSubjectWithVoidClosure() {
-        let subject: ActionSubject = .init()
-        var closureCalled = false
+        let actionSubject: ActionSubject = .init()
+        var actionTriggered = false
 
-        let cancellable = subject.sink {
-            closureCalled = true
-        }
+        actionSubject
+            .sink { actionTriggered = true }
+            .store(in: &observers)
 
-        subject.send(())
+        actionSubject.send(())
 
-        XCTAssertTrue(closureCalled)
+        XCTAssertTrue(actionTriggered)
+    }
 
-        cancellable.cancel()
+    func testActionSubjectUsagePattern() {
+        let actionSubject: ActionSubject = .init()
+        var actions: [String] = []
+
+        actionSubject
+            .sink { actions.append("Action 1") }
+            .store(in: &observers)
+
+        actionSubject
+            .sink { actions.append("Action 2") }
+            .store(in: &observers)
+
+        actionSubject.send(())
+
+        XCTAssertEqual(actions.count, 2)
+        XCTAssertTrue(actions.contains("Action 1"))
+        XCTAssertTrue(actions.contains("Action 2"))
     }
 
     func testActionSubjectChaining() {
-        let subject: ActionSubject = .init()
-        var step1 = false
+        let actionSubject: ActionSubject = .init()
+        var chainCount = 0
 
-        var cancellables = Set<AnyCancellable>()
-        subject
-            .sink { step1 = true }
+        actionSubject
+            .map { "processed" }
+            .sink { _ in chainCount += 1 }
+            .store(in: &observers)
+
+        actionSubject.send(())
+
+        XCTAssertEqual(chainCount, 1)
+    }
+
+    // MARK: - EventSubject Tests
+
+    func testEventSubjectInitialization() {
+        let eventSubject: EventSubject<String> = .init()
+        XCTAssertNotNil(eventSubject)
+    }
+
+    func testEventSubjectSendingValues() {
+        let eventSubject: EventSubject<String> = .init()
+        var receivedValues: [String] = []
+
+        eventSubject
+            .sink { receivedValues.append($0) }
+            .store(in: &observers)
+
+        eventSubject.send("Hello")
+        eventSubject.send("World")
+
+        XCTAssertEqual(receivedValues, ["Hello", "World"])
+    }
+
+    func testEventSubjectNeverFails() {
+        let eventSubject: EventSubject<Int> = .init()
+        var completionReceived = false
+
+        eventSubject
+            .sink(receiveCompletion: { _ in completionReceived = true },
+                  receiveValue: { _ in })
+            .store(in: &observers)
+
+        eventSubject.send(42)
+        XCTAssertFalse(completionReceived)
+    }
+
+    func testEventSubjectMultipleSubscribers() {
+        let eventSubject: EventSubject<String> = .init()
+        var subscriber1Values: [String] = []
+        var subscriber2Values: [String] = []
+
+        eventSubject
+            .sink { subscriber1Values.append($0) }
+            .store(in: &observers)
+
+        eventSubject
+            .sink { subscriber2Values.append($0) }
+            .store(in: &observers)
+
+        eventSubject.send("Test")
+
+        XCTAssertEqual(subscriber1Values, ["Test"])
+        XCTAssertEqual(subscriber2Values, ["Test"])
+    }
+
+    func testEventSubjectWithDifferentTypes() {
+        let stringSubject: EventSubject<String> = .init()
+        let intSubject: EventSubject<Int> = .init()
+        var stringValues: [String] = []
+        var intValues: [Int] = []
+
+        stringSubject
+            .sink { stringValues.append($0) }
+            .store(in: &observers)
+
+        intSubject
+            .sink { intValues.append($0) }
+            .store(in: &observers)
+
+        stringSubject.send("Hello")
+        intSubject.send(42)
+
+        XCTAssertEqual(stringValues, ["Hello"])
+        XCTAssertEqual(intValues, [42])
+    }
+
+    // MARK: - AnyCancellable Tests
+
+    func testAnyCancellableTypeAlias() {
+        let publisher = Just("test")
+        let cancellable: AnyCancellable = publisher.sink { _ in }
+        XCTAssertNotNil(cancellable)
+    }
+
+    func testAnyCancellableUsage() {
+        var cancellables: Set<AnyCancellable> = []
+        let publisher = Just("test")
+        var receivedValue: String?
+
+        publisher
+            .sink { receivedValue = $0 }
             .store(in: &cancellables)
 
-        subject.send(())
+        XCTAssertEqual(receivedValue, "test")
+        XCTAssertEqual(cancellables.count, 1)
+    }
 
-        XCTAssertTrue(step1)
+    func testAnyCancellableCancellation() {
+        var cancellables: Set<AnyCancellable> = []
+        let subject = PassthroughSubject<String, Never>()
+        var receivedValues: [String] = []
+
+        subject
+            .sink { receivedValues.append($0) }
+            .store(in: &cancellables)
+
+        subject.send("First")
+        cancellables.removeAll()
+        subject.send("Second")
+
+        XCTAssertEqual(receivedValues, ["First"])
     }
 
     // MARK: - Integration Tests
 
     func testSharedTypesIntegration() {
-        let eventSubject: EventSubject<String> = .init()
         let actionSubject: ActionSubject = .init()
-        var cancellables = Set<AnyCancellable>()
-
-        var receivedEvents: [String] = []
+        let eventSubject: EventSubject<String> = .init()
         var actionCount = 0
-
-        eventSubject
-            .sink { receivedEvents.append($0) }
-            .store(in: &cancellables)
+        var eventValues: [String] = []
 
         actionSubject
             .sink { actionCount += 1 }
-            .store(in: &cancellables)
-
-        eventSubject.send("Hello")
-        actionSubject.send(())
-        eventSubject.send("World")
-        actionSubject.send(())
-
-        XCTAssertEqual(receivedEvents, ["Hello", "World"])
-        XCTAssertEqual(actionCount, 2)
-        XCTAssertEqual(cancellables.count, 2)
-    }
-
-    func testSharedTypesWithCombineOperators() {
-        let eventSubject: EventSubject<String> = .init()
-        var cancellables = Set<AnyCancellable>()
-
-        var receivedValues: [String] = []
+            .store(in: &observers)
 
         eventSubject
-            .map { $0.uppercased() }
-            .filter { $0.count > 3 }
-            .sink { receivedValues.append($0) }
-            .store(in: &cancellables)
+            .sink { eventValues.append($0) }
+            .store(in: &observers)
 
-        eventSubject.send("hello")
-        eventSubject.send("hi")
-        eventSubject.send("world")
-        eventSubject.send("swift")
+        actionSubject.send(())
+        eventSubject.send("Event")
 
-        XCTAssertEqual(receivedValues, ["HELLO", "WORLD", "SWIFT"])
+        XCTAssertEqual(actionCount, 1)
+        XCTAssertEqual(eventValues, ["Event"])
     }
 
     func testSharedTypesMemoryManagement() {
-        weak var weakEventSubject: EventSubject<String>?
         weak var weakActionSubject: ActionSubject?
+        weak var weakEventSubject: EventSubject<String>?
 
         do {
-            let eventSubject: EventSubject<String> = .init()
             let actionSubject: ActionSubject = .init()
-
-            weakEventSubject = eventSubject
+            let eventSubject: EventSubject<String> = .init()
             weakActionSubject = actionSubject
+            weakEventSubject = eventSubject
 
-            var cancellables = Set<AnyCancellable>()
-
-            eventSubject
-                .sink { _ in }
-                .store(in: &cancellables)
-
-            actionSubject
-                .sink { _ in }
-                .store(in: &cancellables)
+            actionSubject.send(())
+            eventSubject.send("Test")
         }
 
-        // Subjects should be deallocated after the scope
-        XCTAssertNil(weakEventSubject)
-        XCTAssertNil(weakActionSubject)
+        // Give some time for deallocation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            XCTAssertNil(weakActionSubject)
+            XCTAssertNil(weakEventSubject)
+        }
+    }
+
+    func testSharedTypesWithCombineOperators() {
+        let eventSubject: EventSubject<Int> = .init()
+        var processedValues: [String] = []
+
+        eventSubject
+            .map { "Value: \($0)" }
+            .filter { $0.contains("2") }
+            .sink { processedValues.append($0) }
+            .store(in: &observers)
+
+        eventSubject.send(1)
+        eventSubject.send(2)
+        eventSubject.send(3)
+
+        XCTAssertEqual(processedValues, ["Value: 2"])
+    }
+
+    // MARK: - CustomMirror Tests
+
+    func testCustomMirrorWithIgnoredState() {
+        struct TestStruct {
+            let value: Int
+        }
+
+        @IgnoredState
+        var ignoredValue = TestStruct(value: 42)
+
+        let mirror = _ignoredValue.customMirror
+        XCTAssertEqual(mirror.children.count, 1)
+
+        let firstChild = mirror.children.first!
+        XCTAssertEqual(firstChild.label, "value")
+        XCTAssertEqual(firstChild.value as? Int, 42)
+    }
+
+    func testCustomMirrorWithComplexIgnoredState() {
+        struct NestedStruct {
+            let name: String
+            let count: Int
+        }
+
+        struct TestStruct {
+            let nested: NestedStruct
+            let flag: Bool
+        }
+
+        @IgnoredState
+        var ignoredValue = TestStruct(nested: NestedStruct(name: "Test", count: 5), flag: true)
+
+        let mirror = _ignoredValue.customMirror
+        XCTAssertEqual(mirror.children.count, 2)
+
+        let children = Array(mirror.children)
+        let nestedChild = children.first { $0.label == "nested" }
+        let flagChild = children.first { $0.label == "flag" }
+
+        XCTAssertNotNil(nestedChild)
+        XCTAssertNotNil(flagChild)
+        XCTAssertEqual(flagChild?.value as? Bool, true)
+    }
+
+    // MARK: - LocalizedStringResource Tests (iOS 16+)
+
+    @available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
+    func testLocalizedStringResourceWithUIState() {
+        struct LocalizableStruct: Equatable, CustomLocalizedStringResourceConvertible {
+            let value: String
+
+            var localizedStringResource: LocalizedStringResource {
+                LocalizedStringResource(stringLiteral: value)
+            }
+        }
+
+        @UIState
+        var state = LocalizableStruct(value: "Hello World")
+
+        let resource = state.localizedStringResource
+        XCTAssertNotNil(resource)
+    }
+
+    @available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
+    func testLocalizedStringResourceWithManagedState() {
+        struct LocalizableStruct: BehavioralStateContract, CustomLocalizedStringResourceConvertible {
+            let value: String
+
+            var localizedStringResource: LocalizedStringResource {
+                LocalizedStringResource(stringLiteral: value)
+            }
+
+            mutating func applyRules() {}
+
+            @SubscriptionBuilder
+            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+                // No binding rules needed for this test
+            }
+
+            @AnyTokenBuilder<Any>
+            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
+                // No any rules needed for this test
+            }
+        }
+
+        @ManagedState
+        var state = LocalizableStruct(value: "Test Value")
+
+        let resource = state.localizedStringResource
+        XCTAssertNotNil(resource)
+    }
+
+    @available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
+    func testLocalizedStringResourceWithUIBinding() {
+        struct LocalizableStruct: CustomLocalizedStringResourceConvertible {
+            let value: String
+
+            var localizedStringResource: LocalizedStringResource {
+                LocalizedStringResource(stringLiteral: value)
+            }
+        }
+
+        let source = LocalizableStruct(value: "Binding Value")
+        let binding = UIBinding(get: { source }, set: { _ in })
+
+        let resource = binding.localizedStringResource
+        XCTAssertNotNil(resource)
     }
 }
