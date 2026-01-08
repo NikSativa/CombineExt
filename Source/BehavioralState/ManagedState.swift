@@ -234,7 +234,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
         self.rulesSubject = .init(.init(old: nil, binding: $bindable()))
 
         // create rules
-        notificationRules += createAnyRules($bindable())
+        notificationRules += createAnyRules(observe())
         bindingRules += createBindingRules()
 
         self.lock.withLock {

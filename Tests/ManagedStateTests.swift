@@ -621,4 +621,94 @@ extension ManagedStateTests {
         XCTAssertEqual(model.number, 42)
         XCTAssertEqual(model.binding, 42) // Should be updated by rules
     }
+
+    func testManagedStateWithNotificationCenter() {
+        // Use subject pattern similar to the class property (line 6-7)
+        @ManagedState
+        var subject: NotificationTestModel = .init()
+
+        subscribe()
+        
+        // Clear previous values and set up tracking for this test
+        clearValues()
+        var receivedNumbers: [Int] = []
+        var receivedTexts: [String] = []
+        
+        // Subscribe to changes using subject (similar to class subscribe() method)
+        $subject.number
+            .sink { new in
+                receivedNumbers.append(new)
+            }
+            .store(in: &cancellables)
+        
+        $subject.text
+            .sink { new in
+                receivedTexts.append(new)
+            }
+            .store(in: &cancellables)
+        
+        // Initial state
+        XCTAssertEqual(subject.number, 0)
+        XCTAssertEqual(subject.text, "0")
+        XCTAssertEqual(subject.binding, 0)
+        
+        // Post notification which should trigger the subscription in applyAnyRules
+        // and change number to 42, which will call applyRules
+        NotificationCenter.default.post(name: NotificationTestModel.testNotificationName, object: nil)
+
+        // Wait a bit for async operations
+        let expectation = XCTestExpectation(description: "Notification processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+        
+        // Verify that applyRules was called (text should be updated to "42")
+        XCTAssertEqual(subject.number, 42, "Number should be updated from notification")
+        XCTAssertEqual(subject.text, "42", "Text should be updated by applyRules")
+        XCTAssertEqual(subject.binding, 42, "Binding should be updated by applyRules")
+        
+        // Verify that subscribers received updates
+        XCTAssertTrue(receivedNumbers.contains(42), "Number subscriber should receive 42")
+        XCTAssertTrue(receivedTexts.contains("42"), "Text subscriber should receive '42'")
+    }
 }
+
+private struct NotificationTestModel: Hashable, BehavioralStateContract, CustomDebugStringConvertible {
+    var number: Int = 0
+    var binding: Int = 0
+    var text: String = "initial"
+
+    var debugDescription: String {
+        return "<number: \(number), binding: \(binding), text: \(text)>"
+    }
+
+    init() {
+    }
+
+    mutating func applyRules() {
+        text = "\(number)"
+    }
+
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+        state.bindDiffed(to: \.number) { parent in
+            parent.new.binding = parent.new.number
+        }
+    }
+
+    static let testNotificationName = Notification.Name("TestModelNotification")
+
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
+            // Subscribe to test notification for ManagedStateTests
+        NotificationCenter.default
+            .publisher(for: testNotificationName)
+            .sink { _ in
+                // Change the value which will trigger applyRules
+                state.wrappedValue.number = 42
+            }
+    }
+}
+
+extension NotificationTestModel: @unchecked Sendable {}

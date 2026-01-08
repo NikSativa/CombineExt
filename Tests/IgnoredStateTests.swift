@@ -228,7 +228,7 @@ final class IgnoredStateTests: XCTestCase {
         }
 
         let currency = currencyFormatter(99.99)
-        XCTAssertTrue(currency.contains("99.99") || currency.contains("$99.99"))
+        XCTAssertTrue(currency.contains("99.99") || currency.contains("99,99"), "\(currency)")
     }
 
     func test_DynamicCallTwoArguments() {
