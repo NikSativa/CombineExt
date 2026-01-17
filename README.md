@@ -155,6 +155,136 @@ let name = $names.safe(10, default: "Fallback")
 print(name.wrappedValue) // "Fallback"
 ```
 
+### UIBinding as Property Wrapper
+
+`UIBinding` can be used as a property wrapper. You typically initialize it by assigning a binding from `@UIState` or `@ManagedState`:
+
+**Example:**
+
+```swift
+@UIState var state = State(name: "name")
+
+final class MyView: UIView {
+    @UIBinding private var name: String
+    private var cancellables: Set<AnyCancellable> = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        // Initialize with binding from UIState
+        _name = $state.name
+        
+        $name
+            .sink { diff in
+                print("Name changed to: \(diff.new)")
+            }
+            .store(in: &cancellables)
+    }
+
+    func configure(withName binding: UIBinding<String>) {
+        _name = binding
+    }
+
+    func buttonTapped() {
+        name = "new name" // Direct access to wrapped value
+    }
+}
+```
+
+**Using with constant values:**
+
+```swift
+final class PreviewView: UIView {
+    @UIBinding private var title: String
+    private var cancellables: Set<AnyCancellable> = []
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        // Initialize with constant binding
+        _title = UIBinding<String>.constant("Read-only")
+        
+        $title
+            .sink { diff in
+                print("Title: \(diff.new)")
+            }
+            .store(in: &cancellables)
+    }
+    
+    func displayTitle() {
+        print(title) // "Read-only"
+        title = "World" // No effect, value remains "Read-only"
+        print(title) // Still "Read-only"
+    }
+}
+```
+
+**Direct usage (not as property wrapper):**
+
+For read-only bindings that never emit changes, use the static `constant(_:)` method:
+
+```swift
+// Create a constant binding for a fixed title
+let titleBinding = UIBinding<String>.constant("Fixed Title")
+
+// Reading works
+print(titleBinding.wrappedValue) // Prints: "Fixed Title"
+
+// Setting is ignored
+titleBinding.wrappedValue = "New Title"
+print(titleBinding.wrappedValue) // Still prints: "Fixed Title"
+
+// Useful for preview or placeholder data
+struct ContentView: View {
+    var binding: UIBinding<String>
+
+    static var previews: some View {
+        ContentView(binding: .constant("Preview Data"))
+    }
+}
+```
+
+**Implementation:**
+
+```swift
+/// Creates a constant binding that cannot be modified.
+///
+/// Use this method to create a read-only binding that always returns the same value.
+/// Any attempts to set a new value will be ignored.
+static func constant(_ value: Value) -> Self {
+    return .init(publisher: EventSubject().eraseToAnyPublisher(),
+                 get: { value },
+                 set: { _ in })
+}
+```
+
+### Custom Extensions
+
+You can extend `UIBinding` with additional functionality as needed for your project. The library provides the core functionality, but you're free to add convenience extensions that fit your specific use cases.
+
+**Example: ExpressibleByNilLiteral Support**
+
+If you need to initialize `UIBinding` with `nil` for optional types, you can add this extension:
+
+```swift
+extension UIBinding: ExpressibleByNilLiteral where Value: ExpressibleByNilLiteral {
+    public init(nilLiteral: ()) {
+        self = .constant(nil)
+    }
+}
+
+// Usage:
+final class MyView: UIView {
+    @UIBinding private var optionalName: String? = nil
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        // Now you can use nil initialization
+        _optionalName = nil
+    }
+}
+```
+
+**Note:** This extension is not included in the library by default, as it may not be needed for all projects. Add it only if it fits your use case.
+
 ## 🔁 `@ValueSubject`
 
 A mutable, shared, observable value reference:

@@ -5,42 +5,38 @@ import XCTest
 final class UIBindingTests: XCTestCase {
     private var observers: Set<AnyCancellable> = []
     func test_UIBindingDynamicCallNoArguments() {
-        @UIBinding
+        @UIState
         var model = TestModel(number: 42, binding: 0)
 
         XCTAssertEqual(model.number, 42)
         XCTAssertEqual(model.binding, 0) // No rules applied
 
-        @UIBinding
-        var binding: TestModel
-        _binding = $model()
+        let binding = $model()
 
-        XCTAssertEqual(binding.number, 42)
-        XCTAssertEqual(binding.binding, 0)
+        XCTAssertEqual(binding.wrappedValue.number, 42)
+        XCTAssertEqual(binding.wrappedValue.binding, 0)
 
-        binding.number = 100
+        binding.wrappedValue.number = 100
 
-        XCTAssertEqual(model.number, 42) // model.number remains unchanged in UIBinding
+        XCTAssertEqual(model.number, 100) // model.number is updated through binding
         XCTAssertEqual(model.binding, 0) // binding remains unchanged
     }
 
     func test_UIBindingDynamicCallWithKeyPath() {
-        @UIBinding
+        @UIState
         var model = TestModel(number: 42, binding: 0)
 
         XCTAssertEqual(model.number, 42)
         XCTAssertEqual(model.binding, 0) // No rules applied
 
-        @UIBinding
-        var binding: Int
-        _binding = $model(\.number)
+        let binding = $model(\.number)
 
-        XCTAssertEqual(binding, 42)
+        XCTAssertEqual(binding.wrappedValue, 42)
         XCTAssertEqual(model.binding, 0)
 
-        binding = 100
+        binding.wrappedValue = 100
 
-        XCTAssertEqual(model.number, 42) // model.number remains unchanged in UIBinding
+        XCTAssertEqual(model.number, 100) // model.number is updated through binding
         XCTAssertEqual(model.binding, 0) // binding remains unchanged
     }
 }
@@ -78,13 +74,13 @@ private extension UIBindingTests {
     // MARK: - Additional UIBinding Tests
 
     func testUIBindingWithDifferentTypes() {
-        @UIBinding
+        @UIState
         var intValue: Int = 0
 
-        @UIBinding
+        @UIState
         var stringValue: String = "initial"
 
-        @UIBinding
+        @UIState
         var boolValue: Bool = false
 
         XCTAssertEqual(intValue, 0)
@@ -101,7 +97,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithOptionalValues() {
-        @UIBinding
+        @UIState
         var optionalInt: Int? = nil
 
         XCTAssertNil(optionalInt)
@@ -114,7 +110,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithArrayValues() {
-        @UIBinding
+        @UIState
         var arrayValue: [Int] = []
 
         XCTAssertTrue(arrayValue.isEmpty)
@@ -130,7 +126,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithDictionaryValues() {
-        @UIBinding
+        @UIState
         var dictValue: [String: Int] = [:]
 
         XCTAssertTrue(dictValue.isEmpty)
@@ -150,7 +146,7 @@ private extension UIBindingTests {
             var name: String
         }
 
-        @UIBinding
+        @UIState
         var structValue: TestStruct = .init(id: 0, name: "initial")
 
         XCTAssertEqual(structValue.id, 0)
@@ -170,7 +166,7 @@ private extension UIBindingTests {
             var value: Int
         }
 
-        @UIBinding
+        @UIState
         var nestedValue: NestedStruct = .init(inner: InnerStruct(value: 0))
 
         XCTAssertEqual(nestedValue.inner.value, 0)
@@ -180,18 +176,17 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithPublisherSubscription() {
-        @UIBinding
+        @UIState
         var counter: Int = 0
 
-        var receivedValues: [Int] = []
+        var receivedValues: [DiffedValue<Int>] = []
         let expectation = XCTestExpectation(description: "Should receive values")
+        expectation.expectedFulfillmentCount = 3
 
-        $counter
-            .sink { value in
-                receivedValues.append(value)
-                if receivedValues.count == 3 {
-                    expectation.fulfill()
-                }
+        $counter.publisher
+            .sink { diff in
+                receivedValues.append(diff)
+                expectation.fulfill()
             }
             .store(in: &observers)
 
@@ -199,18 +194,21 @@ private extension UIBindingTests {
         counter = 2
 
         wait(for: [expectation], timeout: 1.0)
-        XCTAssertEqual(receivedValues, [0, 1, 2])
+        XCTAssertEqual(receivedValues.count, 3)
+        XCTAssertEqual(receivedValues[0].new, 0) // Initial value
+        XCTAssertEqual(receivedValues[1].new, 1)
+        XCTAssertEqual(receivedValues[2].new, 2)
     }
 
     func testUIBindingWithKeyPathSubscription() {
-        @UIBinding
+        @UIState
         var model = TestModel(number: 0, binding: 0)
 
         var numberValues: [Int] = []
         var bindingValues: [Int] = []
 
-        $model.number.sink { numberValues.append($0) }.store(in: &observers)
-        $model.binding.sink { bindingValues.append($0) }.store(in: &observers)
+        $model.number.sink { diff in numberValues.append(diff.new) }.store(in: &observers)
+        $model.binding.sink { diff in bindingValues.append(diff.new) }.store(in: &observers)
 
         model.number = 5
         model.binding = 10
@@ -220,13 +218,13 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithCombineOperators() {
-        @UIBinding
+        @UIState
         var counter: Int = 0
 
         var receivedValues: [Int] = []
         let expectation = XCTestExpectation(description: "Should receive filtered values")
 
-        $counter
+        $counter.publisher
             .filter { $0.new > 5 }
             .map { $0.new * 2 }
             .sink { value in
@@ -247,34 +245,36 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithMultipleSubscribers() {
-        @UIBinding
+        @UIState
         var counter: Int = 0
 
-        var subscriber1Values: [Int] = []
-        var subscriber2Values: [Int] = []
+        var subscriber1Values: [DiffedValue<Int>] = []
+        var subscriber2Values: [DiffedValue<Int>] = []
 
-        $counter.sink { subscriber1Values.append($0) }.store(in: &observers)
-        $counter.sink { subscriber2Values.append($0) }.store(in: &observers)
+        $counter.publisher.sink { subscriber1Values.append($0) }.store(in: &observers)
+        $counter.publisher.sink { subscriber2Values.append($0) }.store(in: &observers)
 
         counter = 1
         counter = 2
         counter = 3
 
-        XCTAssertEqual(subscriber1Values, [0, 1, 2, 3])
-        XCTAssertEqual(subscriber2Values, [0, 1, 2, 3])
+        XCTAssertEqual(subscriber1Values.count, 4) // Initial + 3 changes
+        XCTAssertEqual(subscriber2Values.count, 4) // Initial + 3 changes
+        XCTAssertEqual(subscriber1Values.map(\.new), [0, 1, 2, 3])
+        XCTAssertEqual(subscriber2Values.map(\.new), [0, 1, 2, 3])
     }
 
     func testUIBindingWithCancellation() {
-        @UIBinding
+        @UIState
         var counter: Int = 0
 
-        var receivedValues: [Int] = []
-        let cancellable = $counter.sink { receivedValues.append($0) }
+        var receivedValues: [DiffedValue<Int>] = []
+        let cancellable = $counter.publisher.sink { receivedValues.append($0) }
 
         counter = 1
         counter = 2
 
-        XCTAssertEqual(receivedValues.count, 3) // 0, 1, 2
+        XCTAssertEqual(receivedValues.count, 3) // 0 (initial), 1, 2
 
         // Cancel subscription
         cancellable.cancel()
@@ -287,7 +287,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithDirectPropertyAccess() {
-        @UIBinding
+        @UIState
         var model = TestModel(number: 0, binding: 0)
 
         // Test direct property access
@@ -303,9 +303,8 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithMemoryManagement() {
-        // UIBinding is a struct, so we can't test weak references
-        // Instead, test that it can be created and used
-        @UIBinding
+        // UIState is a class, test that it can be created and used
+        @UIState
         var counter: Int = 0
 
         XCTAssertEqual(counter, 0)
@@ -315,7 +314,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithConcurrentAccess() {
-        @UIBinding
+        @UIState
         var counter: Int = 0
 
         let expectation = XCTestExpectation(description: "Concurrent access")
@@ -337,7 +336,7 @@ private extension UIBindingTests {
 
     func testUIBindingWithLargeData() {
         let largeArray = Array(0..<1000)
-        @UIBinding
+        @UIState
         var largeData: [Int] = largeArray
 
         XCTAssertEqual(largeData.count, 1000)
@@ -353,7 +352,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithUnicodeValues() {
-        @UIBinding
+        @UIState
         var unicodeString: String = "🚀"
 
         XCTAssertEqual(unicodeString, "🚀")
@@ -366,7 +365,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithFloatValues() {
-        @UIBinding
+        @UIState
         var floatValue: Double = 0.0
 
         XCTAssertEqual(floatValue, 0.0, accuracy: 0.001)
@@ -379,7 +378,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithBooleanValues() {
-        @UIBinding
+        @UIState
         var boolValue: Bool = false
 
         XCTAssertFalse(boolValue)
@@ -392,7 +391,7 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithCharacterValues() {
-        @UIBinding
+        @UIState
         var charValue: Character = "A"
 
         XCTAssertEqual(charValue, "A")
@@ -405,21 +404,26 @@ private extension UIBindingTests {
     }
 
     func testUIBindingWithTwoWayBinding() {
-        @UIBinding
+        @UIState
         var source: Int = 0
 
-        @UIBinding
+        @UIState
         var target: Int = 0
 
-        // Create two-way binding
-        target = source
+        let targetBinding: UIBinding<Int> = $target()
+
+        // Subscribe source to target
+        targetBinding
+            .map(\.new)
+            .sink { targetBinding.wrappedValue = $0 }
+            .store(in: &observers)
 
         XCTAssertEqual(source, 0)
         XCTAssertEqual(target, 0)
 
         source = 42
         XCTAssertEqual(source, 42)
-        XCTAssertEqual(target, 0) // target doesn't automatically update
+        XCTAssertEqual(target, 0) // target doesn't automatically update without subscription
 
         target = 100
         XCTAssertEqual(source, 42) // source doesn't automatically update
@@ -432,24 +436,38 @@ private extension UIBindingTests {
             var text: String
         }
 
-        @UIBinding
+        @UIState
         var model = NestedModel(value: 0, text: "initial")
 
-        @UIBinding
-        var valueBinding: Int
-        _valueBinding = $model.value
+        // Use explicit type annotations to resolve ambiguity
+        let valueBinding: UIBinding<Int> = $model.value
+        let textBinding: UIBinding<String> = $model.text
 
-        @UIBinding
-        var textBinding: String
-        _textBinding = $model.text
+        XCTAssertEqual(valueBinding.wrappedValue, 0)
+        XCTAssertEqual(textBinding.wrappedValue, "initial")
 
-        XCTAssertEqual(valueBinding, 0)
-        XCTAssertEqual(textBinding, "initial")
-
-        valueBinding = 42
-        textBinding = "updated"
+        valueBinding.wrappedValue = 42
+        textBinding.wrappedValue = "updated"
 
         XCTAssertEqual(model.value, 42)
         XCTAssertEqual(model.text, "updated")
+    }
+
+    func testUIBindingConstant() {
+        // Test that UIBinding.constant() is the only way to create UIBinding directly
+        let constantBinding = UIBinding<String>.constant("Fixed Value")
+        
+        XCTAssertEqual(constantBinding.wrappedValue, "Fixed Value")
+        
+        // Setting should be ignored for constant binding
+        constantBinding.wrappedValue = "New Value"
+        XCTAssertEqual(constantBinding.wrappedValue, "Fixed Value")
+        
+        // Test with different types
+        let intConstant = UIBinding<Int>.constant(42)
+        XCTAssertEqual(intConstant.wrappedValue, 42)
+        
+        let boolConstant = UIBinding<Bool>.constant(true)
+        XCTAssertTrue(boolConstant.wrappedValue)
     }
 }

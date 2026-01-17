@@ -52,82 +52,6 @@ public struct UIBinding<Value> {
         return self
     }
 
-    /// Default uninitialized initializer for `UIBinding`. Not intended for direct use.
-    ///
-    /// This form is provided only as a workaround for some UIKit patterns, such as when a binding
-    /// must be declared before all dependencies are available. It will crash at runtime if accessed.
-    ///
-    /// ### Example
-    /// ```swift
-    /// struct State {
-    ///     var name: String
-    /// }
-    ///
-    /// @UIState
-    /// var state: State = .init(name: "name")
-    ///
-    /// let view = MyView()
-    /// view.configure(withName: $state.name)
-    ///
-    /// final class MyView: UIView {
-    ///     @UIBinding private var name: String
-    ///     private var cancellables: Set<AnyCancellable> = []
-    ///
-    ///     func configure(withName name: UIBinding<String>) {
-    ///         _name = name
-    ///         $name
-    ///             .sink { ... do something ... }
-    ///             .store(in: &cancellables)
-    ///     }
-    ///
-    ///     func buttonTapped() {
-    ///         name = "new name"
-    ///     }
-    /// }
-    /// ```
-    /// Creates an uninitialized `UIBinding` that will crash when accessed.
-    ///
-    /// This initializer is not intended for direct use. It creates a binding that will
-    /// trigger a fatal error when its `wrappedValue` is accessed.
-    ///
-    /// - Warning: This initializer should only be used internally by the framework.
-    public init() {
-        self.get = { fatalError("init(): must supply initial value") }
-        self.set = { _ in }
-        self.publisher = EventSubject().eraseToAnyPublisher()
-    }
-
-    /// Initializes a constant `UIBinding` with an immutable value. Not intended for direct use.
-    ///
-    /// This initializer is useful when you need a read-only binding that never emits changes.
-    /// It can be used for previews, test data, or placeholder values where dynamic updates are not needed.
-    ///
-    /// - Parameter wrappedValue: The constant value to expose.
-    ///
-    /// ### Example
-    /// ```swift
-    /// let constantName: UIBinding<String> = UIBinding(wrappedValue: "Read-only")
-    /// print(constantName.wrappedValue) // "Read-only"
-    /// ```
-    /// Creates a constant `UIBinding` with an immutable value.
-    ///
-    /// This initializer creates a read-only binding that never emits changes.
-    /// It's useful for previews, test data, or placeholder values where dynamic updates are not needed.
-    ///
-    /// - Parameter value: The constant value to wrap in the binding.
-    ///
-    /// ### Example
-    /// ```swift
-    /// let constantBinding = UIBinding(wrappedValue: "Hello")
-    /// print(constantBinding.wrappedValue) // "Hello"
-    /// // constantBinding.wrappedValue = "World" // No effect, value remains "Hello"
-    /// ```
-    public init(wrappedValue value: Value) {
-        self.get = { value }
-        self.set = { _ in }
-        self.publisher = EventSubject().eraseToAnyPublisher()
-    }
-
     /// Initializes a `UIBinding` with a publisher, getter, and setter.
     ///
     /// Use this initializer when constructing bindings manually from existing sources of truth,
@@ -153,6 +77,44 @@ public struct UIBinding<Value> {
         self.get = get
         self.set = set
         self.publisher = publisher ?? EventSubject().eraseToAnyPublisher()
+    }
+}
+
+public extension UIBinding {
+    /// Creates a constant binding that cannot be modified.
+    ///
+    /// Use this method to create a read-only binding that always returns the same value.
+    /// Any attempts to set a new value will be ignored. This is useful when you need to pass
+    /// a binding to a component that requires one, but the value should remain constant.
+    ///
+    /// - Parameter value: The constant value that this binding will always return.
+    /// - Returns: A `UIBinding` that always returns the specified value and ignores all set operations.
+    ///
+    /// ### Example
+    /// ```swift
+    /// // Create a constant binding for a fixed title
+    /// let titleBinding = UIBinding<String>.constant("Fixed Title")
+    ///
+    /// // Reading works
+    /// print(titleBinding.wrappedValue) // Prints: "Fixed Title"
+    ///
+    /// // Setting is ignored
+    /// titleBinding.wrappedValue = "New Title"
+    /// print(titleBinding.wrappedValue) // Still prints: "Fixed Title"
+    ///
+    /// // Useful for preview or placeholder data
+    /// struct ContentView: View {
+    ///     var binding: UIBinding<String>
+    ///
+    ///     static var previews: some View {
+    ///         ContentView(binding: .constant("Preview Data"))
+    ///     }
+    /// }
+    /// ```
+    static func constant(_ value: Value) -> Self {
+        return .init(publisher: EventSubject().eraseToAnyPublisher(),
+                     get: { value },
+                     set: { _ in })
     }
 }
 
@@ -182,31 +144,6 @@ public extension UIBinding {
     /// ```
     subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> UIBinding<V> {
         return observe(keyPath)
-    }
-
-    /// Returns or sets the value of a nested property using dynamic member lookup.
-    ///
-    /// Enables dot-syntax for reading or writing nested values without returning a binding.
-    ///
-    /// - Parameter keyPath: A writable key path to a nested property.
-    /// - Returns: The current value at the key path.
-    ///
-    /// ### Example
-    /// ```swift
-    /// let age = userBinding.age
-    /// userBinding.age = age + 1
-    /// ```
-    subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> V {
-        get {
-            wrappedValue[keyPath: keyPath]
-        }
-        nonmutating set {
-            wrappedValue[keyPath: keyPath] = newValue
-        }
-    }
-
-    subscript<V>(dynamicMember keyPath: KeyPath<Value, V>) -> V {
-        wrappedValue[keyPath: keyPath]
     }
 
     /// Dynamically calls the binding to return a binding to the entire value.

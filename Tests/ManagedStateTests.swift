@@ -628,30 +628,30 @@ extension ManagedStateTests {
         var subject: NotificationTestModel = .init()
 
         subscribe()
-        
+
         // Clear previous values and set up tracking for this test
         clearValues()
         var receivedNumbers: [Int] = []
         var receivedTexts: [String] = []
-        
+
         // Subscribe to changes using subject (similar to class subscribe() method)
         $subject.number
             .sink { new in
                 receivedNumbers.append(new)
             }
             .store(in: &cancellables)
-        
+
         $subject.text
             .sink { new in
                 receivedTexts.append(new)
             }
             .store(in: &cancellables)
-        
+
         // Initial state
         XCTAssertEqual(subject.number, 0)
         XCTAssertEqual(subject.text, "0")
         XCTAssertEqual(subject.binding, 0)
-        
+
         // Post notification which should trigger the subscription in applyAnyRules
         // and change number to 42, which will call applyRules
         NotificationCenter.default.post(name: NotificationTestModel.testNotificationName, object: nil)
@@ -662,12 +662,12 @@ extension ManagedStateTests {
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 1.0)
-        
+
         // Verify that applyRules was called (text should be updated to "42")
         XCTAssertEqual(subject.number, 42, "Number should be updated from notification")
         XCTAssertEqual(subject.text, "42", "Text should be updated by applyRules")
         XCTAssertEqual(subject.binding, 42, "Binding should be updated by applyRules")
-        
+
         // Verify that subscribers received updates
         XCTAssertTrue(receivedNumbers.contains(42), "Number subscriber should receive 42")
         XCTAssertTrue(receivedTexts.contains("42"), "Text subscriber should receive '42'")
@@ -683,8 +683,7 @@ private struct NotificationTestModel: Hashable, BehavioralStateContract, CustomD
         return "<number: \(number), binding: \(binding), text: \(text)>"
     }
 
-    init() {
-    }
+    init() {}
 
     mutating func applyRules() {
         text = "\(number)"
@@ -701,7 +700,7 @@ private struct NotificationTestModel: Hashable, BehavioralStateContract, CustomD
 
     @AnyTokenBuilder<Any>
     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
-            // Subscribe to test notification for ManagedStateTests
+        // Subscribe to test notification for ManagedStateTests
         NotificationCenter.default
             .publisher(for: testNotificationName)
             .sink { _ in
