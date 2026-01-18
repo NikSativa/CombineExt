@@ -17,14 +17,20 @@ import Foundation
 /// }
 ///
 /// @UIState var user = Model(name: "Alice", age: 30)
-/// $user.name.sink { print("Name changed: \($0)") }.store(in: &cancellables)
+/// 
+/// // Subscribe to changes (receives DiffedValue)
+/// $user.name.sink { diff in print("Name changed: \(diff.new)") }.store(in: &cancellables)
+/// 
+/// // Or subscribe to just new values
+/// $user.name.publisher.sink { newName in print("Name changed: \(newName)") }.store(in: &cancellables)
+/// 
 /// user.name = "Bob"  // Triggers sink output
 /// ```
 @dynamicMemberLookup
 @dynamicCallable
 @propertyWrapper
 public struct UIBinding<Value> {
-    private let publisher: AnyPublisher<DiffedValue<Value>, Never>
+    private let diffedPublisher: AnyPublisher<DiffedValue<Value>, Never>
     private let get: () -> Value
     private let set: (Value) -> Void
 
@@ -76,7 +82,55 @@ public struct UIBinding<Value> {
                 set: @escaping (Value) -> Void) {
         self.get = get
         self.set = set
-        self.publisher = publisher ?? EventSubject().eraseToAnyPublisher()
+        self.diffedPublisher = publisher ?? CurrentValueSubject(.init(old: nil, get: get, set: set)).eraseToAnyPublisher()
+    }
+
+    /// Initializes a `UIBinding` from a factory configuration.
+    ///
+    /// Use this initializer with `UIBindingFactory` to create bindings with preset configurations,
+    /// such as constant or uninitialized bindings for property wrapper usage.
+    ///
+    /// - Parameter factory: A factory that creates the binding when needed.
+    ///
+    /// ### Example
+    /// ```swift
+    /// @UIBinding private var name: String = UIBindingFactory<String>.lazy
+    /// @UIBinding private var title: String = UIBindingFactory<String>.constant("Fixed")
+    /// ```
+    public init(_ factory: UIBindingFactory<Value>) {
+        self = factory.make()
+    }
+
+    /// A publisher that emits only the new values (without old values).
+    ///
+    /// This property provides a convenient way to subscribe to value changes
+    /// when you only need the new value, not the full `DiffedValue` containing
+    /// both old and new values.
+    ///
+    /// - Returns: A publisher emitting `Value` (not `DiffedValue<Value>`).
+    ///
+    /// ### Example
+    /// ```swift
+    /// @UIBinding private var name: String
+    ///
+    /// $name.publisher
+    ///     .sink { newName in
+    ///         print("Name changed to: \(newName)")
+    ///     }
+    ///     .store(in: &cancellables)
+    /// ```
+    ///
+    /// **Note:** To receive both old and new values, subscribe directly to the binding
+    /// (which conforms to `Publisher` with `Output == DiffedValue<Value>`):
+    /// ```swift
+    /// $name
+    ///     .sink { diff in
+    ///         print("Changed from \(diff.old ?? "nil") to \(diff.new)")
+    ///     }
+    ///     .store(in: &cancellables)
+    /// ```
+    public var publisher: AnyPublisher<Value, Never> {
+        return justNew()
     }
 }
 
@@ -112,9 +166,8 @@ public extension UIBinding {
     /// }
     /// ```
     static func constant(_ value: Value) -> Self {
-        return .init(publisher: EventSubject().eraseToAnyPublisher(),
-                     get: { value },
-                     set: { _ in })
+        return .init(get: { value },
+                     set: { new in Swift.print("Attempted to set on constant binding \(new)") })
     }
 }
 
@@ -125,7 +178,7 @@ extension UIBinding: Combine.Publisher {
     public typealias Failure = Never
 
     public func receive<S>(subscriber: S) where S: Subscriber, Never == S.Failure, DiffedValue<Value> == S.Input {
-        publisher.receive(subscriber: subscriber)
+        diffedPublisher.receive(subscriber: subscriber)
     }
 }
 

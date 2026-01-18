@@ -3,6 +3,10 @@ import Foundation
 import XCTest
 
 final class UIBindingTests: XCTestCase {
+    // swiftformat:next:disable unusedPrivateDeclarations
+    @UIBinding(.lazy)
+    private var lazyValue: String
+
     private var observers: Set<AnyCancellable> = []
     func test_UIBindingDynamicCallNoArguments() {
         @UIState
@@ -456,17 +460,17 @@ private extension UIBindingTests {
     func testUIBindingConstant() {
         // Test that UIBinding.constant() is the only way to create UIBinding directly
         let constantBinding = UIBinding<String>.constant("Fixed Value")
-        
+
         XCTAssertEqual(constantBinding.wrappedValue, "Fixed Value")
-        
+
         // Setting should be ignored for constant binding
         constantBinding.wrappedValue = "New Value"
         XCTAssertEqual(constantBinding.wrappedValue, "Fixed Value")
-        
+
         // Test with different types
         let intConstant = UIBinding<Int>.constant(42)
         XCTAssertEqual(intConstant.wrappedValue, 42)
-        
+
         let boolConstant = UIBinding<Bool>.constant(true)
         XCTAssertTrue(boolConstant.wrappedValue)
     }

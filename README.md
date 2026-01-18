@@ -146,6 +146,8 @@ let isOnBinding = $state(\.isOn) // Returns binding to isOn property
 isOnBinding.wrappedValue = true
 ```
 
+**Note:** The examples above show `@UIState` as a property wrapper. Always use `@UIState` syntax, not `UIState(...)` initialization.
+
 ### Safe Collection Access
 
 ```swift
@@ -173,9 +175,17 @@ final class MyView: UIView {
         // Initialize with binding from UIState
         _name = $state.name
         
+        // Subscribe to changes (receives DiffedValue)
         $name
             .sink { diff in
                 print("Name changed to: \(diff.new)")
+            }
+            .store(in: &cancellables)
+        
+        // Or subscribe to just new values
+        $name.publisher
+            .sink { newName in
+                print("Name changed to: \(newName)")
             }
             .store(in: &cancellables)
     }
@@ -194,17 +204,22 @@ final class MyView: UIView {
 
 ```swift
 final class PreviewView: UIView {
-    @UIBinding private var title: String
+    @UIBinding private var title: String = UIBindingFactory<String>.constant("Read-only")
     private var cancellables: Set<AnyCancellable> = []
     
     override init(frame: CGRect) {
         super.init(frame: frame)
-        // Initialize with constant binding
-        _title = UIBinding<String>.constant("Read-only")
-        
+        // Subscribe to changes (receives DiffedValue)
         $title
             .sink { diff in
                 print("Title: \(diff.new)")
+            }
+            .store(in: &cancellables)
+        
+        // Or subscribe to just new values
+        $title.publisher
+            .sink { newTitle in
+                print("Title: \(newTitle)")
             }
             .store(in: &cancellables)
     }
@@ -213,6 +228,23 @@ final class PreviewView: UIView {
         print(title) // "Read-only"
         title = "World" // No effect, value remains "Read-only"
         print(title) // Still "Read-only"
+    }
+}
+```
+
+**Using with uninitialized binding:**
+
+```swift
+final class MyView: UIView {
+    @UIBinding private var name: String = UIBindingFactory<String>.lazy
+    private var cancellables: Set<AnyCancellable> = []
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+    }
+    
+    func configure(withName binding: UIBinding<String>) {
+        _name = binding
     }
 }
 ```
@@ -231,6 +263,20 @@ print(titleBinding.wrappedValue) // Prints: "Fixed Title"
 // Setting is ignored
 titleBinding.wrappedValue = "New Title"
 print(titleBinding.wrappedValue) // Still prints: "Fixed Title"
+
+// Subscribe to changes (receives DiffedValue)
+titleBinding
+    .sink { diff in
+        print("Changed from \(diff.old ?? "nil") to \(diff.new)")
+    }
+    .store(in: &cancellables)
+
+// Or subscribe to just new values
+titleBinding.publisher
+    .sink { newTitle in
+        print("New title: \(newTitle)")
+    }
+    .store(in: &cancellables)
 
 // Useful for preview or placeholder data
 struct ContentView: View {
@@ -313,6 +359,7 @@ struct User {
 @ValueSubject var user = User()
 
 // Access entire value (using $ projected value)
+@ValueSubject var user = User()
 let binding = $user() // Returns binding to entire User struct
 
 // Access specific properties (using $ projected value)
