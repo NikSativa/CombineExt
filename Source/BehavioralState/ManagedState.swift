@@ -134,16 +134,19 @@ public enum ManagedStateLock {
 /// ### Example
 /// ```swift
 /// struct MyState: BehavioralStateContract {
-///     var count: Int
-///     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
-///     static func applyNotificationRules(to state: UIBinding<Self>) -> [NotificationToken] { [] }
+///     var count: Int = 0
 ///     mutating func applyRules() {}
+///     @SubscriptionBuilder
+///     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+///     @AnyTokenBuilder<Any>
+///     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
 /// }
 ///
-/// @ManagedState var state = MyState(count: 0)
-/// $state.publisher
+/// @ManagedState var state = MyState()
+/// $state
 ///     .sink { print("Updated count:", $0.new.count) }
 ///     .store(in: &cancellables)
+/// state.count += 1
 /// ```
 @dynamicMemberLookup
 @dynamicCallable
@@ -458,14 +461,24 @@ public extension ManagedState {
     ///
     /// ### Example
     /// ```swift
+    /// struct User: BehavioralStateContract {
+    ///     var name: String
+    ///     var age: Int
+    ///     mutating func applyRules() {}
+    ///     @SubscriptionBuilder
+    ///     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+    ///     @AnyTokenBuilder<Any>
+    ///     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
+    /// }
+    ///
     /// @ManagedState var user = User(name: "Alice", age: 30)
     ///
     /// // Get binding to entire user object
-    /// let userBinding = user()
+    /// let userBinding = $user()
     /// userBinding.wrappedValue.name = "Bob"
     ///
     /// // Observe changes to entire user
-    /// user().sink { user in
+    /// $user().sink { user in
     ///     print("User updated: \(user.name), \(user.age)")
     /// }.store(in: &cancellables)
     /// ```
@@ -482,14 +495,24 @@ public extension ManagedState {
     ///
     /// ### Example
     /// ```swift
+    /// struct User: BehavioralStateContract {
+    ///     var name: String
+    ///     var age: Int
+    ///     mutating func applyRules() {}
+    ///     @SubscriptionBuilder
+    ///     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+    ///     @AnyTokenBuilder<Any>
+    ///     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
+    /// }
+    ///
     /// @ManagedState var user = User(name: "Alice", age: 30)
     ///
     /// // Get binding to specific property
-    /// let nameBinding = user(\.name)
+    /// let nameBinding = $user(\.name)
     /// nameBinding.wrappedValue = "Bob"
     ///
     /// // Observe changes to specific property
-    /// user(\.age).sink { age in
+    /// $user(\.age).sink { age in
     ///     print("Age changed to: \(age)")
     /// }.store(in: &cancellables)
     /// ```

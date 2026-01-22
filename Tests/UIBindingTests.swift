@@ -4,7 +4,7 @@ import XCTest
 
 final class UIBindingTests: XCTestCase {
     // swiftformat:next:disable unusedPrivateDeclarations
-    @UIBinding(.lazy)
+    @UIBinding(.placeholder)
     private var lazyValue: String
 
     private var observers: Set<AnyCancellable> = []

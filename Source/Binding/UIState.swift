@@ -8,7 +8,7 @@ import Foundation
 ///
 /// ### Example
 /// ```swift
-/// struct State {
+/// struct State: Equatable {
 ///     var counter: Int
 /// }
 ///
@@ -124,14 +124,15 @@ public extension UIState {
     ///
     /// ### Example
     /// ```swift
+    /// struct User: Equatable { var name: String; var age: Int }
     /// @UIState var user = User(name: "Alice", age: 30)
     ///
     /// // Get binding to entire user object
-    /// let userBinding = user()
+    /// let userBinding = $user()
     /// userBinding.wrappedValue.name = "Bob"
     ///
     /// // Observe changes to entire user
-    /// user().sink { user in
+    /// $user().sink { user in
     ///     print("User updated: \(user.name), \(user.age)")
     /// }.store(in: &cancellables)
     /// ```
@@ -148,14 +149,15 @@ public extension UIState {
     ///
     /// ### Example
     /// ```swift
+    /// struct User: Equatable { var name: String; var age: Int }
     /// @UIState var user = User(name: "Alice", age: 30)
     ///
     /// // Get binding to specific property
-    /// let nameBinding = user(\.name)
+    /// let nameBinding = $user(\.name)
     /// nameBinding.wrappedValue = "Bob"
     ///
     /// // Observe changes to specific property
-    /// user(\.age).sink { age in
+    /// $user(\.age).sink { age in
     ///     print("Age changed to: \(age)")
     /// }.store(in: &cancellables)
     /// ```

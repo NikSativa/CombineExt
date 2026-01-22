@@ -61,8 +61,11 @@ public protocol BehavioralStateContract: Equatable {
     /// ### Example
     /// ```swift
     /// struct AppLifecycleModel: BehavioralStateContract {
-    ///     func applyRules() {}
+    ///     mutating func applyRules() {}
+    ///     @SubscriptionBuilder
+    ///     static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
     ///
+    ///     @AnyTokenBuilder<Any>
     ///     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
     ///         [
     ///             NotificationCenter.default

@@ -9,12 +9,7 @@ import Foundation
 /// ### Example
 /// ```swift
 /// final class MyView: UIView {
-///     @UIBinding private var name: String
-///
-///     override init(frame: CGRect) {
-///         super.init(frame: frame)
-///         _name = UIBindingFactory<String>.lazy
-///     }
+///     @UIBinding(.placeholder) private var name: String
 ///
 ///     func configure(withName binding: UIBinding<String>) {
 ///         _name = binding
@@ -32,24 +27,7 @@ public struct UIBindingFactory<Value> {
         self.creator = creator
     }
 
-    /// Creates a factory that produces a constant binding with the specified value.
-    ///
-    /// The resulting binding always returns the same value and ignores all set operations.
-    ///
-    /// - Parameter value: The constant value that the binding will always return.
-    /// - Returns: A factory that creates a constant `UIBinding`.
-    ///
-    /// ### Example
-    /// ```swift
-    /// @UIBinding private var title: String = UIBindingFactory<String>.constant("Fixed")
-    /// ```
-    public static func constant(_ value: Value) -> Self {
-        return .init {
-            return .constant(value)
-        }
-    }
-
-    /// Creates a factory that produces an uninitialized binding (alias for `lazy`).
+    /// Creates a factory that produces an uninitialized binding (alias for `placeholder`).
     ///
     /// The resulting binding will crash with a descriptive error if accessed before
     /// being properly initialized. This is useful for property wrappers where the
@@ -59,13 +37,18 @@ public struct UIBindingFactory<Value> {
     ///
     /// ### Example
     /// ```swift
-    /// @UIBinding private var name: String = UIBindingFactory<String>.uninitialized
-    /// ```
+    /// final class MyView: UIView {
+    ///     @UIBinding(.uninitialized) private var name: String
+    ///
+    ///     func configure(with name: String) {
+    ///         _name = name
+    ///     }
+    /// }
     public static var uninitialized: Self {
-        return lazy
+        return placeholder
     }
 
-    /// Creates a factory that produces a lazy (uninitialized) binding.
+    /// Creates a factory that produces a placeholder (uninitialized) binding.
     ///
     /// The resulting binding will crash with a descriptive error if accessed before
     /// being properly initialized. This is useful for property wrappers where the
@@ -75,15 +58,21 @@ public struct UIBindingFactory<Value> {
     ///
     /// ### Example
     /// ```swift
-    /// @UIBinding private var name: String = UIBindingFactory<String>.lazy
+    /// final class MyView: UIView {
+    ///     @UIBinding(.placeholder) private var name: String
+    ///
+    ///     func configure(with name: String) {
+    ///         _name = name
+    ///     }
+    /// }
     /// ```
-    public static var lazy: Self {
+    public static var placeholder: Self {
         return .init {
             return .init(get: {
                              fatalError(
                                  """
                                  UIBinding accessed before initialization.
-                                 This binding was created with UIBindingConfigurations.lazy() and must be
+                                 This binding was created with UIBindingFactory.placeholder and must be
                                  initialized by assigning a proper binding before use.
                                  Example: _binding = $state.property
                                  """
@@ -93,13 +82,22 @@ public struct UIBindingFactory<Value> {
                              fatalError(
                                  """
                                  UIBinding accessed before initialization.
-                                 This binding was created with UIBindingConfigurations.lazy() and must be
+                                 This binding was created with UIBindingFactory.placeholder and must be
                                  initialized by assigning a proper binding before use.
                                  Example: _binding = $state.property
                                  """
                              )
                          })
         }
+    }
+
+    /// Creates a factory that produces a lazy (uninitialized) binding (deprecated: use `placeholder` instead).
+    ///
+    /// - Warning: This property is deprecated. Use `placeholder` instead for better clarity.
+    /// - Returns: A factory that creates an uninitialized `UIBinding`.
+    @available(*, deprecated, renamed: "placeholder", message: "Use 'placeholder' instead for better clarity")
+    public static var lazy: Self {
+        return placeholder
     }
 
     /// Creates a `UIBinding` instance using the factory's creator closure.

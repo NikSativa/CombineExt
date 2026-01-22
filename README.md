@@ -80,9 +80,10 @@ struct CounterModel: BehavioralStateContract {
     ///
     /// - Parameter state: A reference to the managed state.
     /// - Returns: An array of tokens keeping observers alive.
-    @NotificationBuilder
-    static func applyAnyRules(to state: ManagedState<Self>) -> [NotificationToken] {
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
         // External observers (e.g., NotificationCenter)
+        []
     }
 }
 ```
@@ -92,7 +93,7 @@ struct CounterModel: BehavioralStateContract {
 ```swift
 @ManagedState var model = CounterModel()
 $model.sink { print("Count:", $0.count) }.store(in: &cancellables)
-model.send(.increment)
+model.count += 1
 ```
 
 ### Dynamic Callable Support
@@ -119,7 +120,7 @@ displayBinding.wrappedValue = "Updated"
 Bind and observe nested values with minimal boilerplate:
 
 ```swift
-struct ViewState { var isOn: Bool }
+struct ViewState: Equatable { var isOn: Bool }
 @UIState var state = ViewState(isOn: false)
 
 $state.isOn
@@ -134,6 +135,7 @@ state.isOn = true
 `@UIState` and `@UIBinding` support dynamic callable syntax via projected value:
 
 ```swift
+struct ViewState: Equatable { var isOn: Bool }
 @UIState var state = ViewState(isOn: false)
 
 // Access entire value (using $ projected value)
@@ -155,6 +157,9 @@ isOnBinding.wrappedValue = true
 
 let name = $names.safe(10, default: "Fallback")
 print(name.wrappedValue) // "Fallback"
+
+let safeItem = $names.safe(1)
+print(safeItem.wrappedValue ?? "nil") // "B"
 ```
 
 ### UIBinding as Property Wrapper
@@ -164,16 +169,15 @@ print(name.wrappedValue) // "Fallback"
 **Example:**
 
 ```swift
+struct State: Equatable { var name: String }
 @UIState var state = State(name: "name")
 
 final class MyView: UIView {
-    @UIBinding private var name: String
+    @UIBinding(.placeholder) private var name: String
     private var cancellables: Set<AnyCancellable> = []
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        // Initialize with binding from UIState
-        _name = $state.name
+    func configure(withName binding: UIBinding<String>) {
+        _name = binding
         
         // Subscribe to changes (receives DiffedValue)
         $name
@@ -190,63 +194,50 @@ final class MyView: UIView {
             .store(in: &cancellables)
     }
 
-    func configure(withName binding: UIBinding<String>) {
-        _name = binding
-    }
-
     func buttonTapped() {
         name = "new name" // Direct access to wrapped value
     }
 }
-```
 
-**Using with constant values:**
-
-```swift
-final class PreviewView: UIView {
-    @UIBinding private var title: String = UIBindingFactory<String>.constant("Read-only")
-    private var cancellables: Set<AnyCancellable> = []
-    
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        // Subscribe to changes (receives DiffedValue)
-        $title
-            .sink { diff in
-                print("Title: \(diff.new)")
-            }
-            .store(in: &cancellables)
-        
-        // Or subscribe to just new values
-        $title.publisher
-            .sink { newTitle in
-                print("Title: \(newTitle)")
-            }
-            .store(in: &cancellables)
-    }
-    
-    func displayTitle() {
-        print(title) // "Read-only"
-        title = "World" // No effect, value remains "Read-only"
-        print(title) // Still "Read-only"
-    }
-}
+let view = MyView(frame: .zero)
+view.configure(withName: $state.name)
+view.buttonTapped()
 ```
 
 **Using with uninitialized binding:**
 
 ```swift
 final class MyView: UIView {
-    @UIBinding private var name: String = UIBindingFactory<String>.lazy
+    @UIBinding(.placeholder) private var name: String
     private var cancellables: Set<AnyCancellable> = []
-    
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-    }
     
     func configure(withName binding: UIBinding<String>) {
         _name = binding
     }
 }
+
+let view = MyView(frame: .zero)
+struct State: Equatable { var name: String }
+@UIState var state = State(name: "test")
+view.configure(withName: $state.name)
+```
+
+**Using with constant binding:**
+
+You can assign a constant binding to a property wrapper using `_binding = .constant(...)`:
+
+```swift
+final class MyView: UIView {
+    @UIBinding(.placeholder) private var name: String
+    private var cancellables: Set<AnyCancellable> = []
+    
+    func configure(withName binding: UIBinding<String>) {
+        _name = binding
+    }
+}
+
+let view = MyView(frame: .zero)
+view.configure(withName: .constant("test"))
 ```
 
 **Direct usage (not as property wrapper):**
@@ -296,9 +287,8 @@ struct ContentView: View {
 /// Use this method to create a read-only binding that always returns the same value.
 /// Any attempts to set a new value will be ignored.
 static func constant(_ value: Value) -> Self {
-    return .init(publisher: EventSubject().eraseToAnyPublisher(),
-                 get: { value },
-                 set: { _ in })
+    return .init(get: { value },
+                 set: { new in Swift.print("Attempted to set on constant binding \(new)") })
 }
 ```
 
@@ -311,7 +301,7 @@ You can extend `UIBinding` with additional functionality as needed for your proj
 If you need to initialize `UIBinding` with `nil` for optional types, you can add this extension:
 
 ```swift
-extension UIBinding: ExpressibleByNilLiteral where Value: ExpressibleByNilLiteral {
+extension UIBinding where Value: ExpressibleByNilLiteral {
     public init(nilLiteral: ()) {
         self = .constant(nil)
     }
@@ -319,13 +309,7 @@ extension UIBinding: ExpressibleByNilLiteral where Value: ExpressibleByNilLitera
 
 // Usage:
 final class MyView: UIView {
-    @UIBinding private var optionalName: String? = nil
-    
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        // Now you can use nil initialization
-        _optionalName = nil
-    }
+    @UIBinding(.placeholder) private var optionalName: String?
 }
 ```
 
@@ -336,10 +320,11 @@ final class MyView: UIView {
 A mutable, shared, observable value reference:
 
 ```swift
-struct Form { var name: String }
+struct Form: Equatable { var name: String }
 @ValueSubject var form = Form(name: "")
 
-$form.name
+$form
+    .map(\.name)
     .sink { print("Name changed to:", $0) }
     .store(in: &cancellables)
 
@@ -351,24 +336,22 @@ form.name = "Nik"
 `@ValueSubject` supports dynamic callable syntax via projected value:
 
 ```swift
-struct User {
+struct User: Equatable {
     var name: String = "John"
     var age: Int = 25
 }
 
 @ValueSubject var user = User()
+let binding = $user
 
-// Access entire value (using $ projected value)
-@ValueSubject var user = User()
-let binding = $user() // Returns binding to entire User struct
+// Subscribe to changes
+$user
+    .sink { _ in }
+    .store(in: &cancellables)
 
-// Access specific properties (using $ projected value)
-let nameBinding = $user(\.name) // Returns binding to name property
-let ageBinding = $user(\.age)   // Returns binding to age property
-
-// Update through bindings
-nameBinding.wrappedValue = "Jane"
-ageBinding.wrappedValue = 30
+// Update values directly
+user.name = "Jane"
+user.age = 30
 ```
 
 ## 🎯 `@IgnoredState` for Transient Data
@@ -376,6 +359,10 @@ ageBinding.wrappedValue = 30
 Use `@IgnoredState` to wrap values that should not affect equality or hashing:
 
 ```swift
+struct DataCache: Equatable {
+    static func == (lhs: DataCache, rhs: DataCache) -> Bool { true }
+}
+
 struct ViewModel: Equatable {
     var title: String = "Hello"
     @IgnoredState var cache = DataCache()
@@ -385,7 +372,7 @@ struct ViewModel: Equatable {
 }
 
 let vm1 = ViewModel()
-let vm2 = ViewModel()
+var vm2 = ViewModel()
 vm2.cache = DataCache() // Different cache
 print(vm1 == vm2) // true - cache is ignored
 ```
@@ -446,13 +433,13 @@ counter = 5 // Prints: "Changed from 0 to 5"
 ### Dynamic Member Access
 
 ```swift
-struct User { var name: String; var age: Int }
+struct User: Equatable { var name: String; var age: Int }
 @UIState var user = User(name: "Alice", age: 30)
 
 $user.publisher
     .sink { diff in
-        diff.name = "Updated Name" // Direct property access
-        print("Age: \(diff.age)")
+        let _ = diff.name // Direct property access
+        let _ = diff.age
     }
     .store(in: &cancellables)
 ```
@@ -481,30 +468,60 @@ button.tapPublisher
 ### Advanced Binding Methods
 
 ```swift
-// Bind to specific property changes (WritableKeyPath)
-state.bind(to: \.username) { model in
-    model.lastUpdated = Date()
+struct Profile: Equatable {
+    var name: String = ""
 }
+
+struct Model: BehavioralStateContract {
+    var username: String = ""
+    var count: Int = 0
+    var profile: Profile = Profile()
+    var readOnlyProperty: String = ""
+    var computedProperty: String = ""
+    
+    mutating func applyRules() {}
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
+}
+
+@UIState var state = Model()
+
+// Bind to specific property changes (WritableKeyPath)
+$state.publisher
+    .bind(to: \Model.username) { model in
+        model.username = "updated"
+    }
+    .store(in: &cancellables)
 
 // Bind with both old and new values (WritableKeyPath)
-state.bindDiffed(to: \.count) { model, diff in
-    print("Count changed from \(diff.old ?? 0) to \(diff.new)")
-}
+$state.publisher
+    .bindDiffed(to: \Model.count) { model, diff in
+        print("Count changed from \(diff.old ?? 0) to \(diff.new)")
+    }
+    .store(in: &cancellables)
 
 // Bind to nested properties (WritableKeyPath)
-state.bind(to: \.profile.name) { name in
-    name = name.uppercased()
-}
+$state.publisher
+    .bind(to: \Model.profile.name) { name in
+        name = name.uppercased()
+    }
+    .store(in: &cancellables)
 
 // Read-only bindings (KeyPath) - for observing without modification
-state.bind(to: \.readOnlyProperty) { value in
-    print("Read-only property changed to: \(value)")
-}
+$state.publisher
+    .bind(to: \Model.readOnlyProperty) { value in
+        print("Read-only property changed to: \(value)")
+    }
+    .store(in: &cancellables)
 
 // Read-only diffed bindings (KeyPath)
-state.bindDiffed(to: \.computedProperty) { model, diff in
-    print("Computed property changed from \(diff.old ?? "nil") to \(diff.new)")
-}
+$state.publisher
+    .bindDiffed(to: \Model.computedProperty) { model, diff in
+        print("Computed property changed from \(diff.old ?? "nil") to \(diff.new)")
+    }
+    .store(in: &cancellables)
 ```
 
 ## 🔗 Extended Combine Publishers
@@ -583,14 +600,6 @@ let person2 = Person(name: "Bob", age: 25)
 // Check if specific properties differ
 let nameDiffers = differs(lhs: person1, rhs: person2, keyPath: \.name)  // true
 let ageDiffers = differs(lhs: person1, rhs: person2, keyPath: \.age)    // true
-
-// Use in reactive bindings for performance
-state.bindDiffed { model in
-    if model.hasChanged(keyPath: \.count) {
-        // Only update when count actually changed
-        model.lastUpdated = Date()
-    }
-}
 ```
 
 **Performance Note**: This function is marked with `@inline(__always)` for optimal performance in reactive scenarios where it's called frequently.
@@ -614,7 +623,11 @@ didTapButton.send(()) // Trigger action
 All reactive wrappers conform to `SafeBinding` for consistent API:
 
 ```swift
-func observeState<T>(_ binding: SafeBinding<T>) {
+struct State: Equatable { var value: String = "" }
+@UIState var uiState = State()
+@ValueSubject var valueSubject = State()
+
+func observeState(_ binding: some SafeBinding) {
     binding.justNew()
         .sink { newValue in
             print("New value: \(newValue)")
@@ -622,10 +635,13 @@ func observeState<T>(_ binding: SafeBinding<T>) {
         .store(in: &cancellables)
 }
 
-// Works with any binding type
+// Works with UIState (conforms to SafeBinding)
 observeState($uiState)
-observeState($managedState)
-observeState($valueSubject)
+
+// ValueSubject doesn't conform to SafeBinding, so we test it separately
+$valueSubject
+    .sink { _ in }
+    .store(in: &cancellables)
 ```
 
 ## 🧱 MVVM Example
@@ -668,8 +684,8 @@ final class LoginViewModel: ObservableObject {
     
     init() {
         // Observe state changes
-        $state.publisher
-            .sink { diff in
+        $state
+            .sink { (diff: DiffedValue<LoginState>) in
                 print("State changed from \(diff.old?.status ?? "nil") to \(diff.new.status)")
             }
             .store(in: &cancellables)
@@ -683,6 +699,8 @@ final class LoginViewModel: ObservableObject {
 final class LoginVC: UIViewController {
     let viewModel = LoginViewModel()
     private var bag = Set<AnyCancellable>()
+    var statusLabel: UILabel = UILabel()
+    var usernameField: UITextField = UITextField()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -698,24 +716,26 @@ final class LoginVC: UIViewController {
             .store(in: &bag)
             
         // Observe username changes with diff
-        viewModel.$state.publisher
-            .bindDiffed(to: \.username) { [weak self] model, diff in
-                self?.usernameField.text = diff.new
-                print("Username changed from '\(diff.old ?? "")' to '\(diff.new)'")
+        viewModel.$state
+            .bindDiffed(to: \LoginState.username) { [weak self] model, usernameDiff in
+                model.username = usernameDiff.new
+                self?.usernameField.text = usernameDiff.new
+                print("Username changed from '\(usernameDiff.old ?? "")' to '\(usernameDiff.new)'")
             }
             .store(in: &bag)
             
         // Safe array access for validation messages
         let validationMessages = ["Username required", "Password too short", "Invalid email"]
-        let messageBinding = $validationMessages.safe(0, default: "No message")
+        @UIState var messages = validationMessages
+        let messageBinding = $messages.safe(0, default: "No message")
         messageBinding.wrappedValue = "Ready to validate"
     }
     
-    @IBAction func usernameChanged(_ sender: UITextField) {
+    @objc func usernameChanged(_ sender: UITextField) {
         viewModel.state.username = sender.text ?? ""
     }
     
-    @IBAction func passwordChanged(_ sender: UITextField) {
+    @objc func passwordChanged(_ sender: UITextField) {
         viewModel.state.password = sender.text ?? ""
     }
 }
@@ -767,19 +787,31 @@ state.withLock { value in      // Atomic operation
 Use `withLock` for atomic read-modify-write operations:
 
 ```swift
-@ManagedState var counter = CounterModel()
-
-// Atomic increment
-counter.withLock { value in
-    value.count += 1
-    value.lastUpdated = Date()
+struct MyState: BehavioralStateContract {
+    mutating func applyRules() {}
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
 }
 
-// Complex atomic operations
-counter.withLock { value in
-    value.count += 1
-    value.isEven = value.count % 2 == 0
-    value.displayText = "Count: \(value.count)"
+@ManagedState var state1 = MyState()
+@ManagedState(lock: .absent) var state2 = MyState()
+@ManagedState(lock: .custom(NSRecursiveLock())) var state3 = MyState()
+
+// Atomic operations with lock
+$state1.withLock { value in
+    let _ = value
+}
+
+// No locking for single-threaded contexts
+$state2.withLock { value in
+    let _ = value
+}
+
+// Custom lock
+$state3.withLock { value in
+    let _ = value
 }
 ```
 

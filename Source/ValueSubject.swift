@@ -9,7 +9,7 @@ import Foundation
 ///
 /// ### Example
 /// ```swift
-/// struct User {
+/// struct User: Equatable {
 ///     var name: String
 ///     var age: Int
 /// }
@@ -18,7 +18,8 @@ import Foundation
 ///     @ValueSubject var user = User(name: "Alice", age: 30)
 ///
 ///     func observe() {
-///         $user.name
+///         $user
+///             .map(\.name)
 ///             .sink { print("Name updated:", $0) }
 ///             .store(in: &cancellables)
 ///
