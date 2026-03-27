@@ -402,7 +402,7 @@ final class SharedTests: XCTestCase {
 
     // MARK: - CustomMirror Tests
 
-    func testCustomMirrorWithIgnoredState() {
+    func testCustomMirrorWithIgnoredState() throws {
         struct TestStruct {
             let value: Int
         }
@@ -413,7 +413,7 @@ final class SharedTests: XCTestCase {
         let mirror = _ignoredValue.customMirror
         XCTAssertEqual(mirror.children.count, 1)
 
-        let firstChild = mirror.children.first!
+        let firstChild = try XCTUnwrap(mirror.children.first)
         XCTAssertEqual(firstChild.label, "value")
         XCTAssertEqual(firstChild.value as? Int, 42)
     }

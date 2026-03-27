@@ -55,9 +55,14 @@ final class DocumentationExamplesTests: XCTestCase {
 
             mutating func applyRules() {}
             @SubscriptionBuilder
-            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+                []
+            }
+
             @AnyTokenBuilder<Any>
-            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
+            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
+                []
+            }
         }
 
         @ManagedState
@@ -207,8 +212,8 @@ final class DocumentationExamplesTests: XCTestCase {
 
     func testUIBindingExpressibleByNilLiteral() {
         #if canImport(UIKit)
-        /// This test demonstrates the custom extension pattern from documentation
-        /// The extension is defined at file scope below
+        // This test demonstrates the custom extension pattern from documentation
+        // The extension is defined at file scope below
         final class MyView: UIView {
             @UIBinding(.placeholder)
             private var optionalName: String?
@@ -269,7 +274,9 @@ final class DocumentationExamplesTests: XCTestCase {
 
     func testIgnoredStateExample() {
         struct DataCache: Equatable {
-            static func ==(_: DataCache, _: DataCache) -> Bool { true }
+            static func ==(_: DataCache, _: DataCache) -> Bool {
+                true
+            }
         }
 
         struct ViewModel: Equatable {
@@ -382,10 +389,14 @@ final class DocumentationExamplesTests: XCTestCase {
             mutating func applyRules() {}
 
             @SubscriptionBuilder
-            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+                []
+            }
 
             @AnyTokenBuilder<Any>
-            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
+            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
+                []
+            }
         }
 
         @UIState
@@ -646,9 +657,14 @@ final class DocumentationExamplesTests: XCTestCase {
         struct MyState: BehavioralStateContract {
             mutating func applyRules() {}
             @SubscriptionBuilder
-            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+                []
+            }
+
             @AnyTokenBuilder<Any>
-            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
+            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
+                []
+            }
         }
 
         @ManagedState

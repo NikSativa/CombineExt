@@ -328,11 +328,123 @@ final class ValueSubjectTests: XCTestCase {
         wait(for: [expectation], timeout: 1.0)
         XCTAssertEqual(receivedValues, [12, 16])
     }
+
+    func testViewModelManagedStateUpdatesPropagate() {
+        let viewModel = TestViewModel()
+
+        // Initial state
+        XCTAssertEqual(viewModel.state.title, "Initial")
+
+        // Track state changes via Combine publisher (simulates UI observation)
+        var receivedStates: [AppState] = []
+        let expFirst = expectation(description: "first update")
+        let expSecond = expectation(description: "second update")
+        expFirst.assertForOverFulfill = false
+        expSecond.assertForOverFulfill = false
+
+        let cancellable = viewModel.$state
+            .publisher
+            .dropFirst()
+            .sink { newState in
+                receivedStates.append(newState)
+                if receivedStates.count == 1 {
+                    expFirst.fulfill()
+                } else if receivedStates.count == 2 {
+                    expSecond.fulfill()
+                }
+            }
+
+        // When: mutate state — simulates user action
+        viewModel.state.title = "After User Action"
+        wait(for: [expFirst], timeout: 1.0)
+
+        // Then: publisher delivers update, ViewModel reflects new state (UI would re-render)
+        XCTAssertEqual(viewModel.state.title, "After User Action")
+        XCTAssertEqual(receivedStates.count, 1)
+        XCTAssertEqual(receivedStates[0].title, "After User Action")
+
+        // When: mutate again — simulates another user action
+        viewModel.state.title = "Final State"
+        wait(for: [expSecond], timeout: 1.0)
+
+        // Then: each mutation propagates independently
+        XCTAssertEqual(viewModel.state.title, "Final State")
+        XCTAssertEqual(receivedStates.count, 2)
+        XCTAssertEqual(receivedStates[1].title, "Final State")
+
+        // Verify: setting the same value does NOT trigger an update (deduplication)
+        let expNoUpdate = expectation(description: "no update")
+        expNoUpdate.isInverted = true
+        let cancellable2 = viewModel.$state
+            .publisher
+            .dropFirst()
+            .sink { _ in expNoUpdate.fulfill() }
+
+        viewModel.state.title = "Final State" // same value
+        wait(for: [expNoUpdate], timeout: 0.1)
+
+        XCTAssertEqual(receivedStates.count, 2, "Duplicate value should not trigger update")
+
+        cancellable.cancel()
+        cancellable2.cancel()
+    }
+
+    func testViewModelObjectWillChangeTriggersOnStateChange() {
+        let viewModel = TestViewModel()
+
+        // Simulate what SwiftUI does with @ObservedObject:
+        // listen to objectWillChange to know when to re-render
+        let exp = expectation(description: "objectWillChange fired")
+        let cancellable = viewModel.objectWillChange.sink { _ in
+            exp.fulfill()
+        }
+
+        // When: mutate state
+        viewModel.state.title = "Changed"
+
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(viewModel.state.title, "Changed")
+
+        cancellable.cancel()
+    }
 }
 
 private extension ValueSubjectTests {
     struct State: Equatable {
         var counter: Int
         var toggle: Bool
+    }
+}
+
+struct AppState: BehavioralStateContract {
+    var title: String = "Initial"
+
+    mutating func applyRules() {
+        // No-op for tests
+    }
+
+    static func applyBindingRules(to state: RulesPublisher) -> [CombineExt.AnyCancellable] {
+        // Return an empty array for tests
+        return []
+    }
+
+    static func applyAnyRules(to state: CombineExt.UIBinding<AppState>) -> [Any] {
+        // Return an empty array for tests
+        return []
+    }
+}
+
+final class TestViewModel: ObservableObject {
+    @ManagedState
+    var state: AppState = .init()
+
+    private var cancellable: AnyCancellable?
+
+    init() {
+        self.cancellable = $state.publisher
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
     }
 }

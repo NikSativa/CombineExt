@@ -163,10 +163,14 @@ final class ObservableObjectTests: XCTestCase {
             mutating func applyRules() {}
 
             @SubscriptionBuilder
-            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] { [] }
+            static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+                []
+            }
 
             @AnyTokenBuilder<Any>
-            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] { [] }
+            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
+                []
+            }
         }
 
         let managedState = ManagedState(wrappedValue: TestModel())

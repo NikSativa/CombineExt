@@ -1,0 +1,227 @@
+# -- rules --
+--rules \
+# acronyms,\
+andOperator,\
+anyObjectProtocol,\
+applicationMain,\
+assertionFailures,\
+blankLineAfterImports,\
+# blankLineAfterSwitchCase,\
+blankLinesAfterGuardStatements,\
+blankLinesAroundMark,\
+blankLinesAtEndOfScope,\
+blankLinesAtStartOfScope,\
+# blankLinesBetweenChainedFunctions,\
+blankLinesBetweenImports,\
+blankLinesBetweenScopes,\
+# blockComments,\
+braces,\
+conditionalAssignment,\
+consecutiveBlankLines,\
+consecutiveSpaces,\
+consistentSwitchCaseSpacing,\
+docComments,\
+docCommentsBeforeModifiers,\
+duplicateImports,\
+elseOnSameLine,\
+emptyBraces,\
+emptyExtensions,\
+enumNamespaces,\
+environmentEntry,\
+extensionAccessControl,\
+fileHeader,\
+fileMacro,\
+genericExtensions,\
+# headerFileName,\ # fileHeader = strip
+hoistAwait,\
+hoistPatternLet,\
+hoistTry,\
+indent,\
+initCoderUnavailable,\
+# isEmpty,\
+leadingDelimiters,\
+linebreakAtEndOfFile,\
+linebreaks,\
+# markTypes,\
+modifierOrder,\
+modifiersOnSameLine,\
+# noExplicitOwnership,\
+noForceTryInTests,\
+noForceUnwrapInTests,\
+# noGuardInTests,\
+numberFormatting,\
+opaqueGenericParameters,\
+# organizeDeclarations,\
+preferCountWhere,\
+preferFinalClasses,\
+preferForLoop,\
+preferKeyPath,\
+# preferSwiftTesting,\
+# privateStateVariables,\
+# propertyTypes,\
+redundantAsync,\
+redundantBackticks,\
+redundantBreak,\
+# redundantClosure,\
+redundantEquatable,\
+redundantExtensionACL,\
+redundantFileprivate,\
+redundantGet,\
+redundantInit,\
+# redundantInternal,\
+redundantLet,\
+redundantLetError,\
+redundantMemberwiseInit,\
+redundantNilInit,\
+redundantObjc,\
+redundantOptionalBinding,\
+redundantParens,\
+redundantPattern,\
+# redundantProperty,\
+redundantPublic,\
+redundantRawValues,\
+# redundantReturn,\
+redundantSelf,\
+redundantStaticSelf,\
+redundantThrows,\
+redundantType,\
+redundantTypedThrows,\
+redundantViewBuilder,\
+redundantVoidReturnType,\
+semicolons,\
+singlePropertyPerLine,\
+# simplifyGenericConstraints,\
+# sortDeclarations,\
+sortImports,\
+# sortSwitchCases,\
+sortTypealiases,\
+spaceAroundBraces,\
+spaceAroundBrackets,\
+spaceAroundComments,\
+spaceAroundGenerics,\
+spaceAroundOperators,\
+spaceAroundParens,\
+spaceInsideBraces,\
+spaceInsideBrackets,\
+spaceInsideComments,\
+spaceInsideGenerics,\
+spaceInsideParens,\
+# strongOutlets,\
+strongifiedSelf,\
+swiftTestingTestCaseNames,\
+testSuiteAccessControl,\
+todos,\
+trailingClosures,\
+trailingCommas,\
+trailingSpace,\
+typeSugar,\
+unusedArguments,\
+# unusedPrivateDeclarations,\
+urlMacro,\
+# validateTestCases,\
+void,\
+# wrap,\
+wrapArguments,\
+wrapAttributes,\
+# wrapConditionalBodies,\
+wrapEnumCases,\
+wrapFunctionBodies,\
+wrapLoopBodies,\
+wrapMultilineConditionalAssignment,\
+wrapMultilineFunctionChains,\
+# wrapMultilineStatementBraces,\
+wrapPropertyBodies,\
+wrapSingleLineComments,\
+wrapSwitchCases,\
+yodaConditions
+
+
+# -- exclude --
+--exclude Pods/,\
+vendor/,\
+**/fastlane/,\
+**/build/,\
+.build/,\
+**Generated**,\
+**/*generated.swift,\
+**/Package.swift,\
+**/.swiftpm
+
+
+# -- options --
+--swiftversion 5.9
+--self init-only
+--importgrouping testable-last
+--trimwhitespace always #default
+--indent 4
+--tabwidth 4
+--smarttabs enabled #default
+--ifdef no-indent
+--xcodeindentation true
+--indentstrings false #default
+--varattributes preserve
+--extensionacl on-extension #default
+--patternlet hoist #or hoist
+--elseposition same-line #default
+--guardelse same-line #default
+--emptybraces no-space #default
+--indentcase false
+--linebreaks lf #default
+--decimalgrouping ignore
+--binarygrouping ignore
+--octalgrouping ignore
+--hexgrouping ignore
+--fractiongrouping disabled
+--exponentgrouping disabled
+--hexliteralcase uppercase
+--exponentcase uppercase
+--semicolons never #default
+--operatorfunc no-space
+--ranges no-space
+--typedelimiter space-after #default
+--stripunusedargs unnamed-only #or always
+--header strip
+--marktypes never
+--typemark "MARK: - %t"
+--markextensions if-not-empty
+--extensionmark "MARK: - %t + %c"
+--groupedextension "MARK: - %c"
+--redundanttype explicit
+--typeblanklines remove
+--allman false
+--enumnamespaces always #default
+--someAny false
+--yodaswap always
+--anonymousforeach ignore #default
+--inlinedforeach convert
+--shortoptionals always
+--voidtype void #default
+--lineaftermarks true #default
+--line-between-guards true
+--condassignment after-property #default
+--doccomments before-declarations #default
+--propertytypes explicit
+--inferredtypes exclude-cond-exprs #default
+--nilinit remove #default
+--commas inline # `remove last comma in arrays` or "always" `add..` (default)
+--wrapenumcases always #default
+#--maxwidth 120
+
+# -- wraparguments --
+--wraparguments after-first
+--wrapparameters after-first
+--wrapcollections before-first
+--closingparen same-line #or balanced
+--callsiteparen same-line #or balanced
+--wrapreturntype never
+--wrapconditions after-first
+--wraptypealiases preserve
+--wrapeffects never
+
+# -- wrapAttributes --
+--funcattributes prev-line
+--typeattributes prev-line
+--storedvarattrs prev-line
+--computedvarattrs prev-line
+--complexattrs prev-line
+#--noncomplexattrs # List of @attributes to exclude from complexattrs rule

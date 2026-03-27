@@ -260,8 +260,13 @@ final class SafeBindingTests: XCTestCase {
         struct CustomCollection: MutableCollection, Equatable {
             var elements: [String] = []
 
-            var startIndex: Int { elements.startIndex }
-            var endIndex: Int { elements.endIndex }
+            var startIndex: Int {
+                elements.startIndex
+            }
+
+            var endIndex: Int {
+                elements.endIndex
+            }
 
             subscript(index: Int) -> String {
                 get { elements[index] }

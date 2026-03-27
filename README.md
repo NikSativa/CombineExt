@@ -741,16 +741,82 @@ final class LoginVC: UIViewController {
 }
 ```
 
+## 🔬 SwiftUI Integration with `ObservableObject`
+
+Use `@ManagedState` inside an `ObservableObject` ViewModel. Bridge `objectWillChange` so SwiftUI re-renders on state changes:
+
+```swift
+struct AppState: BehavioralStateContract {
+    var title: String = "Initial"
+
+    mutating func applyRules() {}
+
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+        []
+    }
+
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<AppState>) -> [Any] {
+        []
+    }
+}
+
+final class ViewModel: ObservableObject {
+    @ManagedState
+    var state: AppState = .init()
+
+    private var cancellable: AnyCancellable?
+
+    init() {
+        cancellable = $state.publisher
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+    }
+}
+```
+
+### Usage in SwiftUI
+
+```swift
+struct ContentView: View {
+    @ObservedObject var viewModel = ViewModel()
+
+    var body: some View {
+        Text(viewModel.state.title)
+        Button("Update") {
+            viewModel.state.title = "Updated"
+        }
+    }
+}
+```
+
+### Observe changes via Combine
+
+```swift
+let viewModel = ViewModel()
+
+viewModel.$state.publisher
+    .sink { state in
+        print("Title: \(state.title)")
+    }
+    .store(in: &cancellables)
+
+viewModel.state.title = "Updated" // triggers sink + objectWillChange
+```
+
 ## 📱 Platform Support
 
 CombineExt supports all major Apple platforms:
 
-- **iOS 13+** - Full support for UIKit reactive patterns
-- **macOS 11+** - AppKit and SwiftUI compatibility  
-- **tvOS 13+** - tvOS interface development
-- **watchOS 6+** - Watch app state management
+- **iOS 16+** - Full support for UIKit reactive patterns
+- **macOS 14+** - AppKit and SwiftUI compatibility
+- **tvOS 16+** - tvOS interface development
+- **watchOS 9+** - Watch app state management
 - **visionOS 1+** - Vision Pro app development
-- **macCatalyst 13+** - iPad apps on Mac
+- **macCatalyst 16+** - iPad apps on Mac
 
 ## 🔧 Advanced Configuration
 
@@ -858,7 +924,7 @@ CombineExt simplifies building reactive UIKit applications with a comprehensive 
 - **Extended Publishers**: `CombineLatest5/6`, `Zip5/6` for complex data flows
 - **Dynamic Callable**: Intuitive property wrapper syntax for all reactive types
 - **Utility Functions**: `differs()` for efficient value comparison with key paths
-- **Platform Support**: iOS 13+, macOS 11+, tvOS 13+, watchOS 6+, visionOS 1+
+- **Platform Support**: iOS 16+, macOS 14+, tvOS 16+, watchOS 9+, visionOS 1+
 - **Clean Architecture**: Perfect for MVVM/MVI patterns with type-safe, testable code
 - **SwiftUI Compatibility**: Works seamlessly with SwiftUI while maintaining UIKit flexibility
 - **Comprehensive Testing**: 216+ tests ensuring reliability and stability

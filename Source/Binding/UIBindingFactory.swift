@@ -69,24 +69,20 @@ public struct UIBindingFactory<Value> {
     public static var placeholder: Self {
         return .init {
             return .init(get: {
-                             fatalError(
-                                 """
-                                 UIBinding accessed before initialization.
-                                 This binding was created with UIBindingFactory.placeholder and must be
-                                 initialized by assigning a proper binding before use.
-                                 Example: _binding = $state.property
-                                 """
-                             )
+                             fatalError("""
+                             UIBinding accessed before initialization.
+                             This binding was created with UIBindingFactory.placeholder and must be
+                             initialized by assigning a proper binding before use.
+                             Example: _binding = $state.property
+                             """)
                          },
                          set: { _ in
-                             fatalError(
-                                 """
-                                 UIBinding accessed before initialization.
-                                 This binding was created with UIBindingFactory.placeholder and must be
-                                 initialized by assigning a proper binding before use.
-                                 Example: _binding = $state.property
-                                 """
-                             )
+                             fatalError("""
+                             UIBinding accessed before initialization.
+                             This binding was created with UIBindingFactory.placeholder and must be
+                             initialized by assigning a proper binding before use.
+                             Example: _binding = $state.property
+                             """)
                          })
         }
     }

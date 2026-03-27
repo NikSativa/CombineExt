@@ -225,7 +225,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
             self.lock = AbsentLock()
         case .synced:
             self.lock = NSRecursiveLock()
-        case .custom(let nSLocking):
+        case let .custom(nSLocking):
             self.lock = nSLocking
         }
         self.prevValues = .init(old: nil, new: wrappedValue, isInitial: true)

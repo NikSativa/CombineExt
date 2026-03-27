@@ -133,8 +133,13 @@ final class CollectionExtTests: XCTestCase {
         struct CustomCollection: Collection {
             let elements: [Int]
 
-            var startIndex: Int { 0 }
-            var endIndex: Int { elements.count }
+            var startIndex: Int {
+                0
+            }
+
+            var endIndex: Int {
+                elements.count
+            }
 
             subscript(index: Int) -> Int {
                 elements[index]
@@ -158,8 +163,13 @@ final class CollectionExtTests: XCTestCase {
         struct CustomMutableCollection: MutableCollection {
             var elements: [Int]
 
-            var startIndex: Int { 0 }
-            var endIndex: Int { elements.count }
+            var startIndex: Int {
+                0
+            }
+
+            var endIndex: Int {
+                elements.count
+            }
 
             subscript(index: Int) -> Int {
                 get { elements[index] }
@@ -278,8 +288,13 @@ final class CollectionExtTests: XCTestCase {
         struct CustomMutableCollection: MutableCollection {
             var elements: [Int]
 
-            var startIndex: Int { elements.startIndex }
-            var endIndex: Int { elements.endIndex }
+            var startIndex: Int {
+                elements.startIndex
+            }
+
+            var endIndex: Int {
+                elements.endIndex
+            }
 
             subscript(index: Int) -> Int {
                 get { elements[index] }

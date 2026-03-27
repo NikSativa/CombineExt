@@ -4,12 +4,12 @@ import XCTest
 
 final class ManagedStateTests: XCTestCase {
     @ManagedState
-    var subject: TestModel = .init()
-    var cancellables: Set<AnyCancellable>!
-    var models: [TestModel] = []
-    var numbers: [Int] = []
-    var binding: [Int] = []
-    var texts: [String] = []
+    private var subject: TestModel = .init()
+    private var cancellables: Set<AnyCancellable>!
+    private var models: [TestModel] = []
+    private var numbers: [Int] = []
+    private var binding: [Int] = []
+    private var texts: [String] = []
 
     override func setUp() {
         super.setUp()
@@ -64,7 +64,7 @@ final class ManagedStateTests: XCTestCase {
         some()
     }
 
-    func testEditable() async throws {
+    func testEditable() async {
         subscribe()
 
         // initial
@@ -105,7 +105,7 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertTrue(["1", "2", "3", "4"].contains(subject.text))
     }
 
-    func testWithLock() async throws {
+    func testWithLock() async {
         subscribe()
 
         // initial
@@ -192,7 +192,7 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertEqual(texts, [])
     }
 
-    func testSink() async throws {
+    func testSink() {
         subscribe()
 
         // initial
@@ -682,8 +682,6 @@ private struct NotificationTestModel: Hashable, BehavioralStateContract, CustomD
     var debugDescription: String {
         return "<number: \(number), binding: \(binding), text: \(text)>"
     }
-
-    init() {}
 
     mutating func applyRules() {
         text = "\(number)"

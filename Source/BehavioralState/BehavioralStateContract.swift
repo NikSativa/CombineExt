@@ -182,7 +182,7 @@ extension Optional: BehavioralStateContract where Wrapped: BehavioralStateContra
         switch (lhs, rhs) {
         case (.none, .none):
             return true
-        case (.some(let lhs), .some(let rhs)):
+        case let (.some(lhs), .some(rhs)):
             return lhs == rhs
         default:
             return false

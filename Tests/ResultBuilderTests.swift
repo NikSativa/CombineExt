@@ -87,9 +87,7 @@ final class ResultBuilderTests: XCTestCase {
         let cancellable1 = AnyCancellable {}
         let cancellable2 = AnyCancellable {}
 
-        let result: [AnyCancellable] = SubscriptionBuilder.buildBlock(
-            condition ? [cancellable1] : [cancellable2]
-        )
+        let result: [AnyCancellable] = SubscriptionBuilder.buildBlock(condition ? [cancellable1] : [cancellable2])
 
         XCTAssertEqual(result.count, 1)
         if condition {
@@ -195,9 +193,7 @@ final class ResultBuilderTests: XCTestCase {
         let token1 = "token1"
         let token2 = "token2"
 
-        let result: [String] = AnyTokenBuilder.buildBlock(
-            condition ? [token1] : [token2]
-        )
+        let result: [String] = AnyTokenBuilder.buildBlock(condition ? [token1] : [token2])
 
         XCTAssertEqual(result.count, 1)
         if condition {

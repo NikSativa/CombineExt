@@ -276,7 +276,7 @@ final class PublishersExtTests: XCTestCase {
         var errorReceived: Error?
         let cancellable = Publishers.CombineLatest5(subject1, subject2, subject3, subject4, subject5)
             .sink(receiveCompletion: { completion in
-                      if case .failure(let error) = completion {
+                      if case let .failure(error) = completion {
                           errorReceived = error
                       }
                   },
@@ -443,7 +443,7 @@ final class PublishersExtTests: XCTestCase {
 
         Publishers.CombineLatest6(subject1, subject2, subject3, subject4, subject5, subject6)
             .sink(receiveCompletion: { completion in
-                      if case .failure(let error) = completion {
+                      if case let .failure(error) = completion {
                           receivedError = error
                       }
                   },
