@@ -253,6 +253,5 @@ extension ValueSubject: ObservableObject {
     }
 }
 
-#if swift(>=6.0)
 extension ValueSubject: @unchecked Sendable {}
-#endif
+

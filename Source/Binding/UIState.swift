@@ -274,6 +274,5 @@ extension UIState: ObservableObject {
     }
 }
 
-#if swift(>=6.0)
 extension UIState: @unchecked Sendable {}
-#endif
+

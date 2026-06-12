@@ -306,6 +306,5 @@ extension UIBinding: CustomLocalizedStringResourceConvertible where Value: Custo
     }
 }
 
-#if swift(>=6.0)
 extension UIBinding: @unchecked Sendable {}
-#endif
+

@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 
-#if swift(>=6.0)
 /// A global flag that enables or disables cyclic dependency assertions in state rules.
 ///
 /// When set to `true`, an assertion is triggered if the number of rule application loops
@@ -40,46 +39,6 @@ public nonisolated(unsafe) var ManagedStateCyclicDependencyMaxDepth: Int = 100
 /// @ManagedState var model = MyModel() // will use no locking
 /// ```
 public nonisolated(unsafe) var ManagedStateDefaultLock: ManagedStateLock = .synced
-#else
-/// A global flag that enables or disables cyclic dependency assertions in state rules.
-///
-/// When set to `true`, an assertion is triggered if the number of rule application loops
-/// exceeds `ManagedStateCyclicDependencyMaxDepth`. This helps detect unintentional infinite update cycles,
-/// such as those caused by improperly configured state feedback loops.
-///
-/// - Note: Defaults to `true`.
-///
-/// ### Example
-/// ```swift
-/// ManagedStateCyclicDependencyWarning = false // Disable warning in tests
-/// ```
-public var ManagedStateCyclicDependencyWarning: Bool = true
-/// The maximum number of rule reapplication cycles allowed before assuming a cyclic dependency.
-///
-/// If this threshold is exceeded while `ManagedStateCyclicDependencyWarning` is enabled,
-/// an assertion failure is triggered to prevent infinite loops.
-///
-/// - Note: Defaults to `100`.
-///
-/// ### Example
-/// ```swift
-/// ManagedStateCyclicDependencyMaxDepth = 50 // Tighter threshold for specific workflows
-/// ```
-public var ManagedStateCyclicDependencyMaxDepth: Int = 100
-/// The default locking strategy used by `ManagedState` instances.
-///
-/// When initializing `ManagedState` without providing an explicit lock, this value determines
-/// the locking behavior. You can assign `.absent`, `.synced`, or `.custom(...)` to configure the behavior globally.
-///
-/// - Note: Defaults to `.synced`, which uses a recursive lock for thread safety.
-///
-/// ### Example
-/// ```swift
-/// ManagedStateDefaultLock = .absent
-/// @ManagedState var model = MyModel() // will use no locking
-/// ```
-public var ManagedStateDefaultLock: ManagedStateLock = .synced
-#endif
 
 @available(iOS 13.0, macOS 10.15, *)
 extension ManagedState: ObservableObject {

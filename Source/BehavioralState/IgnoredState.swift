@@ -249,6 +249,5 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
     }
 }
 
-#if swift(>=6.0)
 extension IgnoredState: Sendable where Value: Sendable {}
-#endif
+

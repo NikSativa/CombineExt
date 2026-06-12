@@ -228,6 +228,5 @@ extension DiffedValue: Hashable where Value: Hashable {
     }
 }
 
-#if swift(>=6.0)
 extension DiffedValue: @unchecked Sendable where Value: Sendable {}
-#endif
+
