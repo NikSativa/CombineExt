@@ -104,7 +104,7 @@ final class DocumentationExamplesTests: XCTestCase {
     // MARK: - UIBinding Examples
 
     func testUIBindingAsPropertyWrapper() {
-        #if canImport(UIKit)
+        #if canImport(UIKit) && !os(watchOS)
         struct State: Equatable { var name: String }
         @UIState
         var state = State(name: "name")
@@ -158,7 +158,7 @@ final class DocumentationExamplesTests: XCTestCase {
     }
 
     func testUIBindingWithPlaceholder() {
-        #if canImport(UIKit)
+        #if canImport(UIKit) && !os(watchOS)
         final class MyView: UIView {
             @UIBinding(.placeholder)
             private var name: String
@@ -211,7 +211,7 @@ final class DocumentationExamplesTests: XCTestCase {
     }
 
     func testUIBindingExpressibleByNilLiteral() {
-        #if canImport(UIKit)
+        #if canImport(UIKit) && !os(watchOS)
         // This test demonstrates the custom extension pattern from documentation
         // The extension is defined at file scope below
         final class MyView: UIView {
@@ -599,7 +599,7 @@ final class DocumentationExamplesTests: XCTestCase {
         viewModel.state.password = "password"
 
         // ViewController example from documentation
-        #if canImport(UIKit)
+        #if canImport(UIKit) && !os(watchOS)
         final class LoginVC: UIViewController {
             let viewModel = LoginViewModel()
             private var bag = Set<AnyCancellable>()
