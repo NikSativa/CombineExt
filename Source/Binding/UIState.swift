@@ -67,7 +67,7 @@ public final class UIState<Value: Equatable> {
     /// ```
     public lazy var publisher: AnyPublisher<DiffedValue<Value>, Failure> = {
         return subject
-            .removeDuplicates()
+            .removeUnchangedAfterFirst()
             .eraseToAnyPublisher()
     }()
 }
@@ -268,7 +268,7 @@ extension UIState: ObservableObject {
     /// ```
     public var objectWillChange: AnyPublisher<Void, Never> {
         return subject
-            .removeDuplicates()
+            .removeUnchangedAfterFirst()
             .map { _ in () }
             .eraseToAnyPublisher()
     }

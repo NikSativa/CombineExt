@@ -210,8 +210,12 @@ extension DiffedValue: CustomDebugStringConvertible {
 }
 
 extension DiffedValue: Equatable where Value: Equatable {
-    public static func ==(_: Self, rhs: Self) -> Bool {
-        return rhs.old == rhs.new
+    /// Compares two diffed values.
+    ///
+    /// Two diffed values are equal when their old values are equal and their new values are equal.
+    /// The comparison reads `new` at the time of the call.
+    public static func ==(lhs: Self, rhs: Self) -> Bool {
+        return lhs.old == rhs.old && lhs.new == rhs.new
     }
 }
 

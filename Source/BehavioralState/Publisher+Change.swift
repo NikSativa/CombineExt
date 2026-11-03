@@ -65,7 +65,7 @@ public extension Publisher where Failure == Never {
         map { parent in
             return parent.map(keyPath: keyPath)
         }
-        .removeDuplicates()
+        .removeUnchangedAfterFirst()
         .sink { parent in
             var new = parent.new
             onChange(&new)
@@ -255,5 +255,21 @@ public extension Publisher where Failure == Never {
             let new = parent.map(keyPath: keyPath)
             onChange(&parent.new, new)
         }
+    }
+}
+
+extension Publisher {
+    func removeUnchangedAfterFirst<Value: Equatable>() -> AnyPublisher<Output, Failure> where Output == DiffedValue<Value> {
+        let upstream = self
+        return Deferred {
+            var isFirst = true
+            return upstream.filter { diff in
+                defer {
+                    isFirst = false
+                }
+                return isFirst || diff.old != diff.new
+            }
+        }
+        .eraseToAnyPublisher()
     }
 }

@@ -14,21 +14,11 @@ final class ManagedStateTests: XCTestCase {
     override func setUp() {
         super.setUp()
         cancellables = []
-        clearValues()
-
-        @ManagedState
-        var subject: TestModel = .init()
     }
 
     override func tearDown() {
         super.tearDown()
         cancellables = nil
-    }
-
-    private func clearValues() {
-        models = []
-        numbers = []
-        texts = []
     }
 
     private func subscribe() {
@@ -57,34 +47,27 @@ final class ManagedStateTests: XCTestCase {
             .store(in: &cancellables)
     }
 
-    func testClosureCapturing() {
-        let some: () -> Void = { [_subject] in
-            print("ignore me. \(_subject.number as Int)")
+    func testClosureCapturesPropertyWrapperStorage() {
+        let readNumber: () -> Int = { [_subject] in
+            return _subject.number
         }
-        some()
+
+        subject.number = 7
+
+        XCTAssertEqual(readNumber(), 7)
     }
 
-    func testEditable() async {
+    func testEditable() {
         subscribe()
 
-        // initial
         XCTAssertEqual(models, [.init(text: "0")])
         XCTAssertEqual(numbers, [0])
         XCTAssertEqual(binding, [0])
         XCTAssertEqual(texts, ["0"])
 
-        // actions
-        var exps: [XCTestExpectation] = []
-        for idx in 0..<4 {
-            let exp = expectation(description: "incrementer")
-            exps.append(exp)
-            DispatchQueue.global().async { [_subject] in
-                _subject.number = idx + 1
-                exp.fulfill()
-            }
+        DispatchQueue.concurrentPerform(iterations: 4) { [_subject] idx in
+            _subject.number = idx + 1
         }
-
-        await fulfillment(of: exps)
 
         XCTAssertEqual(numbers.count, 5)
         XCTAssertTrue(numbers.contains(subject.number))
@@ -105,29 +88,19 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertTrue(["1", "2", "3", "4"].contains(subject.text))
     }
 
-    func testWithLock() async {
+    func testWithLock() {
         subscribe()
 
-        // initial
         XCTAssertEqual(models, [.init(text: "0")])
         XCTAssertEqual(numbers, [0])
         XCTAssertEqual(binding, [0])
         XCTAssertEqual(texts, ["0"])
 
-        // Test withLock for atomic operations
-        var exps: [XCTestExpectation] = []
-        for _ in 0..<4 {
-            let exp = expectation(description: "withLock incrementer")
-            exps.append(exp)
-            DispatchQueue.global().async { [_subject] in
-                _subject.withLock { value in
-                    value.number += 1
-                }
-                exp.fulfill()
+        DispatchQueue.concurrentPerform(iterations: 4) { [_subject] _ in
+            _subject.withLock { value in
+                value.number += 1
             }
         }
-
-        await fulfillment(of: exps)
 
         XCTAssertEqual(numbers.count, 5)
         XCTAssertTrue(numbers.contains(subject.number))
@@ -151,20 +124,16 @@ final class ManagedStateTests: XCTestCase {
     func testWithLockComplexOperations() {
         subscribe()
 
-        // Test complex operations within withLock
         _subject.withLock { value in
             value.number = 10
-            // binding will be automatically set to 10 by applyRules
-            // text will be updated by applyRules to "10"
         }
 
         XCTAssertEqual(subject.number, 10)
-        XCTAssertEqual(subject.binding, 10) // binding is automatically set to number
+        XCTAssertEqual(subject.binding, 10)
         XCTAssertEqual(subject.text, "10")
 
-        // Verify that all changes were captured
         XCTAssertEqual(numbers, [0, 10])
-        XCTAssertEqual(binding, [0, 10]) // binding follows number
+        XCTAssertEqual(binding, [0, 10])
         XCTAssertEqual(texts, ["0", "10"])
     }
 
@@ -173,12 +142,9 @@ final class ManagedStateTests: XCTestCase {
 
         let initialCount = numbers.count
 
-        // withLock with no actual changes should not trigger updates
         _subject.withLock { _ in
-            // No changes made
         }
 
-        // Should not have triggered any additional updates
         XCTAssertEqual(numbers.count, initialCount)
         XCTAssertEqual(subject.number, 0)
         XCTAssertEqual(subject.text, "0")
@@ -189,13 +155,13 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertEqual(subject.text, "0")
         XCTAssertEqual(models, [])
         XCTAssertEqual(numbers, [])
+        XCTAssertEqual(binding, [])
         XCTAssertEqual(texts, [])
     }
 
     func testSink() {
         subscribe()
 
-        // initial
         XCTAssertEqual(models, [.init(text: "0")])
         XCTAssertEqual(numbers, [0])
         XCTAssertEqual(binding, [0])
@@ -203,7 +169,6 @@ final class ManagedStateTests: XCTestCase {
 
         subject.number = 1
 
-        // updated
         XCTAssertEqual(models, [
             .init(number: 0, binding: 0),
             .init(number: 1, binding: 1)
@@ -231,27 +196,29 @@ final class ManagedStateTests: XCTestCase {
     }
 
     func testCounter() {
+        CounterModel.counterFunc = 0
+        CounterModel.counterBind = 0
+
         @ManagedState
         var state: CounterModel = .init()
-        // state.value += 1 // 0
         XCTAssertEqual(state.valueFunc, 0)
         XCTAssertEqual(state.valueBind, 0)
         XCTAssertEqual(CounterModel.counterFunc, 1)
         XCTAssertEqual(CounterModel.counterBind, 1)
 
-        state.value += 1 // 1
+        state.value += 1
         XCTAssertEqual(state.valueFunc, 2)
         XCTAssertEqual(state.valueBind, 3)
         XCTAssertEqual(CounterModel.counterFunc, 3)
         XCTAssertEqual(CounterModel.counterBind, 2)
 
-        state.value += 1 // 2
+        state.value += 1
         XCTAssertEqual(state.valueFunc, 4)
         XCTAssertEqual(state.valueBind, 6)
         XCTAssertEqual(CounterModel.counterFunc, 5)
         XCTAssertEqual(CounterModel.counterBind, 3)
 
-        state.value += 1 // 3
+        state.value += 1
         XCTAssertEqual(state.valueFunc, 6)
         XCTAssertEqual(state.valueBind, 9)
         XCTAssertEqual(CounterModel.counterFunc, 7)
@@ -265,13 +232,8 @@ private struct CounterModel: BehavioralStateContract {
     var valueFunc: Int = 0
     var valueBind: Int = 0
 
-    #if swift(>=6.0)
     nonisolated(unsafe) static var counterFunc: Int = 0
     nonisolated(unsafe) static var counterBind: Int = 0
-    #else
-    static var counterFunc: Int = 0
-    static var counterBind: Int = 0
-    #endif
 
     mutating func applyRules() {
         Self.counterFunc += 1
@@ -289,8 +251,6 @@ private struct CounterModel: BehavioralStateContract {
     @AnyTokenBuilder<Any>
     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {}
 }
-
-// MARK: - DynamicCall Tests for ManagedState
 
 extension ManagedStateTests {
     func test_ManagedStateDynamicCallNoArguments() {
@@ -333,10 +293,7 @@ extension ManagedStateTests {
         XCTAssertEqual(model.binding, 100)
     }
 
-    // MARK: - Additional ManagedState Tests
-
     func testManagedStateWithDifferentLockTypes() {
-        // Test with absent lock
         @ManagedState(lock: .absent)
         var model1 = TestModel(number: 0, binding: 0)
 
@@ -347,7 +304,6 @@ extension ManagedStateTests {
         XCTAssertEqual(model1.number, 10)
         XCTAssertEqual(model1.binding, 10)
 
-        // Test with synced lock
         @ManagedState(lock: .synced)
         var model2 = TestModel(number: 0, binding: 0)
 
@@ -358,7 +314,6 @@ extension ManagedStateTests {
         XCTAssertEqual(model2.number, 20)
         XCTAssertEqual(model2.binding, 20)
 
-        // Test with custom lock
         @ManagedState(lock: .custom(NSRecursiveLock()))
         var model3 = TestModel(number: 0, binding: 0)
 
@@ -375,25 +330,20 @@ extension ManagedStateTests {
             var count: Int = 0
             var isEven: Bool = false
             var displayText: String = ""
-            var lastUpdated: Date = .init()
 
             mutating func applyRules() {
                 isEven = count % 2 == 0
-                displayText = "Count: \(count)"
-                lastUpdated = Date()
             }
 
             @SubscriptionBuilder
             static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
                 state.bind(to: \.count) { model in
-                    model.displayText = "Updated: \(model.count)"
+                    model.displayText = "Count: \(model.count)"
                 }
             }
 
             @AnyTokenBuilder<Any>
-            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
-                // No external rules
-            }
+            static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {}
         }
 
         @ManagedState
@@ -430,9 +380,9 @@ extension ManagedStateTests {
         model.number = 2
         model.number = 3
 
-        XCTAssertEqual(subscriber1Values.count, 4) // 0, 1, 2, 3
-        XCTAssertEqual(subscriber2Values.count, 4) // 0, 1, 2, 3
-        XCTAssertEqual(subscriber3Values.count, 4) // 0, 1, 2, 3
+        XCTAssertEqual(subscriber1Values.count, 4)
+        XCTAssertEqual(subscriber2Values.count, 4)
+        XCTAssertEqual(subscriber3Values.count, 4)
 
         XCTAssertEqual(subscriber1Values.last?.number, 3)
         XCTAssertEqual(subscriber2Values.last?.number, 3)
@@ -453,16 +403,14 @@ extension ManagedStateTests {
         model.number = 1
         model.number = 2
 
-        XCTAssertEqual(receivedValues.count, 3) // 0, 1, 2
+        XCTAssertEqual(receivedValues.count, 3)
 
-        // Cancel subscription
         cancellable.cancel()
 
         model.number = 3
         model.number = 4
 
-        // Should only receive values before cancellation
-        XCTAssertEqual(receivedValues.count, 3) // Still 0, 1, 2
+        XCTAssertEqual(receivedValues.count, 3)
     }
 
     func testManagedStateWithCombineOperators() {
@@ -470,25 +418,20 @@ extension ManagedStateTests {
         var model = TestModel(number: 0, binding: 0)
 
         var receivedValues: [Int] = []
-        let expectation = XCTestExpectation(description: "Should receive filtered values")
 
         $model.number
             .filter { $0.new > 5 }
             .map { $0.new * 2 }
             .sink { value in
                 receivedValues.append(value)
-                if receivedValues.count == 2 {
-                    expectation.fulfill()
-                }
             }
             .store(in: &cancellables)
 
-        model.number = 1 // Should be filtered out
-        model.number = 6 // Should become 12
-        model.number = 2 // Should be filtered out
-        model.number = 8 // Should become 16
+        model.number = 1
+        model.number = 6
+        model.number = 2
+        model.number = 8
 
-        wait(for: [expectation], timeout: 1.0)
         XCTAssertEqual(receivedValues, [12, 16])
     }
 
@@ -509,7 +452,7 @@ extension ManagedStateTests {
         model.number = 15
 
         XCTAssertEqual(numberValues, [0, 5, 10, 15])
-        XCTAssertEqual(bindingValues, [0, 5, 10, 15]) // Should match number due to rules
+        XCTAssertEqual(bindingValues, [0, 5, 10, 15])
         XCTAssertEqual(textValues, ["0", "5", "10", "15"])
     }
 
@@ -517,124 +460,159 @@ extension ManagedStateTests {
         @ManagedState
         var model = TestModel(number: 0, binding: 0)
 
-        // Test direct property access
         XCTAssertEqual(model.number, 0)
         XCTAssertEqual(model.binding, 0)
         XCTAssertEqual(model.text, "0")
 
-        // Test direct property modification
         model.number = 42
         XCTAssertEqual(model.number, 42)
-        XCTAssertEqual(model.binding, 42) // Should be updated by rules
+        XCTAssertEqual(model.binding, 42)
         XCTAssertEqual(model.text, "42")
 
-        // Test direct property modification of derived properties
         model.binding = 100
         XCTAssertEqual(model.binding, 100)
-        // Note: number should remain 42 as binding doesn't affect number in our rules
-    }
-
-    func testManagedStateWithPublisherSubscription() {
-        @ManagedState
-        var model = TestModel(number: 0, binding: 0)
-
-        var receivedValues: [TestModel] = []
-        let expectation = XCTestExpectation(description: "Should receive values")
-
-        $model
-            .sink { value in
-                receivedValues.append(value)
-                if receivedValues.count == 3 {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
-        model.number = 1
-        model.number = 2
-
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertEqual(receivedValues.count, 3) // 0, 1, 2
-        XCTAssertEqual(receivedValues.last?.number, 2)
+        XCTAssertEqual(model.number, 42)
+        XCTAssertEqual(model.text, "42")
     }
 
     func testManagedStateWithDiffedValues() {
         @ManagedState
         var model = TestModel(number: 0, binding: 0)
 
-        var receivedValues: [TestModel] = []
-        let expectation = XCTestExpectation(description: "Should receive values")
+        var oldNumbers: [Int?] = []
+        var newNumbers: [Int] = []
 
-        $model
-            .sink { value in
-                receivedValues.append(value)
-                if receivedValues.count == 3 {
-                    expectation.fulfill()
-                }
+        $model.diffedPublisher
+            .sink { diff in
+                oldNumbers.append(diff.old?.number)
+                newNumbers.append(diff.new.number)
             }
             .store(in: &cancellables)
 
         model.number = 1
         model.number = 2
 
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertEqual(receivedValues.count, 3)
-
-        // Check that we receive the correct values
-        XCTAssertEqual(receivedValues[0].number, 0)
-        XCTAssertEqual(receivedValues[1].number, 1)
-        XCTAssertEqual(receivedValues[2].number, 2)
+        XCTAssertEqual(oldNumbers, [0, 0, 1])
+        XCTAssertEqual(newNumbers, [0, 1, 2])
     }
 
     func testManagedStateWithConcurrentAccess() {
         @ManagedState
         var model = TestModel(number: 0, binding: 0)
 
-        let expectation = XCTestExpectation(description: "Concurrent access")
-        expectation.expectedFulfillmentCount = 10
-
-        // Test concurrent access
-        for i in 0..<10 {
-            DispatchQueue.global().async { [_model] in
-                _model.number = i
-                expectation.fulfill()
+        var publishedValues: [TestModel] = []
+        $model.publisher
+            .sink { value in
+                publishedValues.append(value)
             }
+            .store(in: &cancellables)
+
+        DispatchQueue.concurrentPerform(iterations: 10) { [_model] i in
+            _model.number = i
         }
 
-        wait(for: [expectation], timeout: 5.0)
-
-        // Should have some final value (exact value depends on timing)
-        XCTAssertTrue(model.number >= 0 && model.number < 10)
-        XCTAssertEqual(model.binding, model.number) // Should match due to rules
+        XCTAssertTrue(Set(publishedValues.map(\.number)).isSuperset(of: 1...9))
+        XCTAssertEqual(publishedValues.last, model)
+        XCTAssertTrue(publishedValues.allSatisfy { $0.binding == $0.number })
+        XCTAssertEqual(model.binding, model.number)
     }
 
-    func testManagedStateWithMemoryManagement() {
-        // ManagedState is a struct, so we can't test weak references
-        // Instead, test that it can be created and used
-        @ManagedState
-        var model = TestModel(number: 0, binding: 0)
+    func testManagedStateIsReleasedWhenAnyRuleKeepsBinding() {
+        weak var weakModel: ManagedState<NotificationTestModel>?
 
-        XCTAssertEqual(model.number, 0)
-        XCTAssertEqual(model.binding, 0)
+        do {
+            let model = ManagedState(wrappedValue: NotificationTestModel())
+            weakModel = model
+            model.number = 1
+        }
 
-        model.number = 42
-        XCTAssertEqual(model.number, 42)
-        XCTAssertEqual(model.binding, 42) // Should be updated by rules
+        XCTAssertNil(weakModel)
+    }
+
+    func testDisabledCyclicDependencyWarningDoesNotStopDivergentRules() {
+        let warning = ManagedStateCyclicDependencyWarning
+        let maxDepth = ManagedStateCyclicDependencyMaxDepth
+        defer {
+            ManagedStateCyclicDependencyWarning = warning
+            ManagedStateCyclicDependencyMaxDepth = maxDepth
+        }
+        ManagedStateCyclicDependencyWarning = false
+        ManagedStateCyclicDependencyMaxDepth = 100
+
+        let model = ManagedState(wrappedValue: DivergentModel())
+
+        XCTAssertEqual(model.passes, 100)
+    }
+
+    func testDivergentRulesStopAfterMaxDepthPasses() {
+        let warning = ManagedStateCyclicDependencyWarning
+        let maxDepth = ManagedStateCyclicDependencyMaxDepth
+        defer {
+            ManagedStateCyclicDependencyWarning = warning
+            ManagedStateCyclicDependencyMaxDepth = maxDepth
+        }
+        ManagedStateCyclicDependencyWarning = false
+        ManagedStateCyclicDependencyMaxDepth = 5
+
+        let model = ManagedState(wrappedValue: DivergentModel())
+        XCTAssertEqual(model.passes, 5)
+
+        model.trigger = 1
+        XCTAssertEqual(model.passes, 10)
+    }
+
+    func testConcurrentFirstAccessToPublisherIsSafe() {
+        let model = ManagedState(wrappedValue: TestModel(number: 0, binding: 0))
+
+        DispatchQueue.concurrentPerform(iterations: 100) { _ in
+            _ = model.publisher
+        }
+
+        var numbers: [Int] = []
+        let cancellable = model.publisher.sink { value in
+            numbers.append(value.number)
+        }
+        model.number = 1
+
+        XCTAssertEqual(numbers, [0, 1])
+        cancellable.cancel()
+    }
+
+    func testEqualityAndHashFollowManagedValue() {
+        let first = ManagedState(wrappedValue: TestModel(number: 1, binding: 1))
+        let second = ManagedState(wrappedValue: TestModel(number: 1, binding: 1))
+        let different = ManagedState(wrappedValue: TestModel(number: 2, binding: 2))
+
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(first.hashValue, second.hashValue)
+        XCTAssertNotEqual(first, different)
+
+        second.number = 2
+
+        XCTAssertEqual(second, different)
+        XCTAssertEqual(second.hashValue, different.hashValue)
+    }
+
+    func testKeyPathBindingRuleRunsOnlyWhenItsFieldChanges() {
+        TrimmedTitleModel.titleRuleCalls = 0
+        let model = ManagedState(wrappedValue: TrimmedTitleModel())
+        let callsAfterInit = TrimmedTitleModel.titleRuleCalls
+
+        model.title = " Hello "
+        XCTAssertEqual(model.title, "Hello")
+        XCTAssertEqual(TrimmedTitleModel.titleRuleCalls, callsAfterInit + 2)
+
+        model.amount = 1
+        XCTAssertEqual(TrimmedTitleModel.titleRuleCalls, callsAfterInit + 2)
     }
 
     func testManagedStateWithNotificationCenter() {
-        // Use subject pattern similar to the class property (line 6-7)
         @ManagedState
         var subject: NotificationTestModel = .init()
 
-        subscribe()
-
-        // Clear previous values and set up tracking for this test
-        clearValues()
         var receivedNumbers: [Int] = []
         var receivedTexts: [String] = []
 
-        // Subscribe to changes using subject (similar to class subscribe() method)
         $subject.number
             .sink { new in
                 receivedNumbers.append(new)
@@ -647,28 +625,16 @@ extension ManagedStateTests {
             }
             .store(in: &cancellables)
 
-        // Initial state
         XCTAssertEqual(subject.number, 0)
         XCTAssertEqual(subject.text, "0")
         XCTAssertEqual(subject.binding, 0)
 
-        // Post notification which should trigger the subscription in applyAnyRules
-        // and change number to 42, which will call applyRules
         NotificationCenter.default.post(name: NotificationTestModel.testNotificationName, object: nil)
 
-        // Wait a bit for async operations
-        let expectation = XCTestExpectation(description: "Notification processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
-
-        // Verify that applyRules was called (text should be updated to "42")
         XCTAssertEqual(subject.number, 42, "Number should be updated from notification")
         XCTAssertEqual(subject.text, "42", "Text should be updated by applyRules")
         XCTAssertEqual(subject.binding, 42, "Binding should be updated by applyRules")
 
-        // Verify that subscribers received updates
         XCTAssertTrue(receivedNumbers.contains(42), "Number subscriber should receive 42")
         XCTAssertTrue(receivedTexts.contains("42"), "Text subscriber should receive '42'")
     }
@@ -698,14 +664,47 @@ private struct NotificationTestModel: Hashable, BehavioralStateContract, CustomD
 
     @AnyTokenBuilder<Any>
     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
-        // Subscribe to test notification for ManagedStateTests
         NotificationCenter.default
             .publisher(for: testNotificationName)
             .sink { _ in
-                // Change the value which will trigger applyRules
                 state.wrappedValue.number = 42
             }
     }
 }
 
 extension NotificationTestModel: @unchecked Sendable {}
+
+private struct DivergentModel: BehavioralStateContract {
+    var trigger: Int = 0
+    var passes: Int = 0
+
+    mutating func applyRules() {
+        passes += 1
+    }
+
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {}
+
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {}
+}
+
+private struct TrimmedTitleModel: BehavioralStateContract {
+    var title: String = ""
+    var amount: Int = 0
+
+    nonisolated(unsafe) static var titleRuleCalls: Int = 0
+
+    mutating func applyRules() {}
+
+    @SubscriptionBuilder
+    static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+        state.bind(to: \.title) { (title: inout String) in
+            titleRuleCalls += 1
+            title = title.trimmingCharacters(in: .whitespaces)
+        }
+    }
+
+    @AnyTokenBuilder<Any>
+    static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {}
+}

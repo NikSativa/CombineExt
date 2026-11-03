@@ -180,23 +180,65 @@ final class ObservableObjectTests: XCTestCase {
             .sink { changeCount += 1 }
             .store(in: &cancellables)
 
-        // ManagedState triggers on initial subscription
-        XCTAssertEqual(changeCount, 1)
+        XCTAssertEqual(changeCount, 0)
 
         // Changing value should trigger change
         managedState.wrappedValue = TestModel(value: 1)
-        XCTAssertEqual(changeCount, 2)
+        XCTAssertEqual(changeCount, 1)
 
         managedState.wrappedValue = TestModel(value: 2)
-        XCTAssertEqual(changeCount, 3)
+        XCTAssertEqual(changeCount, 2)
 
         // Changing nested property should also trigger change
         managedState.wrappedValue.value = 3
-        XCTAssertEqual(changeCount, 4)
+        XCTAssertEqual(changeCount, 3)
 
         // Changing nested property again should trigger change
         managedState.wrappedValue.value = 4
-        XCTAssertEqual(changeCount, 5)
+        XCTAssertEqual(changeCount, 4)
+    }
+
+    func testManagedStateObjectWillChangeDoesNotEmitOnSubscription() {
+        let managedState = ManagedState(wrappedValue: TestModel())
+        var changeCount = 0
+
+        managedState.objectWillChange
+            .sink { changeCount += 1 }
+            .store(in: &cancellables)
+
+        XCTAssertEqual(changeCount, 0)
+    }
+
+    func testManagedStateObjectWillChangeEmitsBeforeChange() {
+        let managedState = ManagedState(wrappedValue: TestModel(number: 1, binding: 1))
+        var numbersInHandler: [Int] = []
+
+        managedState.objectWillChange
+            .sink { numbersInHandler.append(managedState.number) }
+            .store(in: &cancellables)
+
+        managedState.number = 2
+
+        XCTAssertEqual(numbersInHandler, [1])
+        XCTAssertEqual(managedState.number, 2)
+    }
+
+    func testManagedStateObjectWillChangeEmitsOncePerChange() {
+        let managedState = ManagedState(wrappedValue: TestModel())
+        var changeCount = 0
+
+        managedState.objectWillChange
+            .sink { changeCount += 1 }
+            .store(in: &cancellables)
+
+        managedState.withLock { value in
+            value.number = 1
+            value.binding = 5
+        }
+        managedState.number = 1
+
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertEqual(managedState.wrappedValue, TestModel(number: 1, binding: 1))
     }
 
     // MARK: - Integration Tests

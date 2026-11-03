@@ -34,6 +34,19 @@ final class EdgeCasesTests: XCTestCase {
                 []
             }
         }
+
+        weak var weakManagedState: ManagedState<TestModel>?
+
+        do {
+            let managedState = ManagedState(wrappedValue: TestModel())
+            weakManagedState = managedState
+
+            var cancellables = Set<AnyCancellable>()
+            managedState.publisher.sink { _ in }.store(in: &cancellables)
+            managedState.value = "Hello"
+        }
+
+        XCTAssertNil(weakManagedState)
     }
 
     // MARK: - Performance Tests

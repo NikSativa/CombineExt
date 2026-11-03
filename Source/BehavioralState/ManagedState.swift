@@ -2,98 +2,65 @@ import Combine
 import Foundation
 import Observation
 
-/// A global flag that enables or disables cyclic dependency assertions in state rules.
+/// Enables the assertion that detects a cyclic dependency in state rules.
 ///
-/// When set to `true`, an assertion is triggered if the number of rule application loops
-/// exceeds `ManagedStateCyclicDependencyMaxDepth`. This helps detect unintentional infinite update cycles,
-/// such as those caused by improperly configured state feedback loops.
+/// The rules converge when a rule pass does not change the value.
+/// If the value is `true` and the rules do not converge within `ManagedStateCyclicDependencyMaxDepth` passes, a debug build stops with an assertion failure.
+/// If the value is `false`, the rules stop after `ManagedStateCyclicDependencyMaxDepth` passes without an assertion failure.
 ///
-/// - Note: Defaults to `true`.
+/// - Note: The default value is `true`.
 ///
 /// ### Example
 /// ```swift
-/// ManagedStateCyclicDependencyWarning = false // Disable warning in tests
+/// ManagedStateCyclicDependencyWarning = false
 /// ```
 public nonisolated(unsafe) var ManagedStateCyclicDependencyWarning: Bool = true
-/// The maximum number of rule reapplication cycles allowed before assuming a cyclic dependency.
+/// The maximum number of rule passes for one change of the managed value.
 ///
-/// If this threshold is exceeded while `ManagedStateCyclicDependencyWarning` is enabled,
-/// an assertion failure is triggered to prevent infinite loops.
+/// `ManagedState` stops the rule passes at this limit, also when the rules do not converge. The limit prevents an infinite loop.
+/// If the rules do not converge at this limit, `ManagedStateCyclicDependencyWarning` controls the assertion failure.
 ///
-/// - Note: Defaults to `100`.
+/// - Note: The default value is `100`.
 ///
 /// ### Example
 /// ```swift
-/// ManagedStateCyclicDependencyMaxDepth = 50 // Tighter threshold for specific workflows
+/// ManagedStateCyclicDependencyMaxDepth = 50
 /// ```
 public nonisolated(unsafe) var ManagedStateCyclicDependencyMaxDepth: Int = 100
-/// The default locking strategy used by `ManagedState` instances.
+/// The lock type that `ManagedState` uses when the initializer gets no lock.
 ///
-/// When initializing `ManagedState` without providing an explicit lock, this value determines
-/// the locking behavior. You can assign `.absent`, `.synced`, or `.custom(...)` to configure the behavior globally.
+/// Set `.absent`, `.synced`, or `.custom(_:)` to change the lock type of all new instances.
+/// The change has no effect on existing instances.
 ///
-/// - Note: Defaults to `.synced`, which uses a recursive lock for thread safety.
+/// - Note: The default value is `.synced`.
 ///
 /// ### Example
 /// ```swift
 /// ManagedStateDefaultLock = .absent
-/// @ManagedState var model = MyModel() // will use no locking
+/// @ManagedState var model = MyModel()
 /// ```
 public nonisolated(unsafe) var ManagedStateDefaultLock: ManagedStateLock = .synced
 
-@available(iOS 13.0, macOS 10.15, *)
 extension ManagedState: ObservableObject {
+    /// A publisher that emits before each change of the managed value.
+    ///
+    /// The publisher emits one time for each change. A subscriber that reads the state in the handler gets the old value.
+    /// The publisher does not emit when a subscriber subscribes, and it does not emit for an equal value.
     public var objectWillChange: AnyPublisher<Void, Never> {
-        return publisher
-            .removeDuplicates()
-            .map { _ in () }
-            .eraseToAnyPublisher()
+        return objectWillChangeSubject.eraseToAnyPublisher()
     }
 }
 
-/// Defines the locking mechanism used within a `ManagedState` instance.
+/// A property wrapper that manages a value and applies the rules of `BehavioralStateContract`.
 ///
-/// Use this enum to configure how thread safety is enforced when reading and writing state.
+/// Each change of the managed value runs the rules of the value type.
+/// Then `ManagedState` stores the final result and notifies the subscribers and observers.
+/// `ManagedState` supports Combine, `ObservableObject`, and the Observation framework. Use it in a ViewModel for SwiftUI or UIKit.
 ///
-/// - `absent`: No locking is performed. Not thread-safe.
-/// - `synced`: Uses an internal recursive lock for thread safety. Default.
-/// - `custom`: Provides a custom lock implementation.
+/// The type supports `@dynamicMemberLookup` for direct access to the properties of the managed value.
 ///
-/// ### Example
-/// ```swift
-/// let model = ManagedState(wrappedValue: state, lock: .custom(NSRecursiveLock()))
-/// ```
-public enum ManagedStateLock {
-    /// No synchronization. Use only when thread-safety is not a concern.
-    case absent
-
-    /// Uses a recursive lock to ensure thread-safety during state access and updates.
-    ///
-    /// ⚠️ **Important**: While individual property access is thread-safe, compound operations
-    /// like `state.count += 1` are NOT atomic and may cause race conditions in concurrent code.
-    /// Use direct assignment `state.count = newValue` for thread-safe updates.
-    case synced
-
-    /// Provides a custom locking mechanism conforming to `NSLocking`.
-    ///
-    /// ⚠️ **Important**: `ManagedState` notifies Combine subscribers and Observation observers while it holds the lock.
-    /// If they read the state during the notification, they take the lock again on the same thread.
-    /// Use a recursive lock, such as `NSRecursiveLock`, in this case. A non-recursive lock, such as `NSLock`, causes a deadlock.
-    ///
-    /// - Parameter lock: An object conforming to `NSLocking`, such as `NSRecursiveLock` or `NSLock`.
-    case custom(NSLocking)
-}
-
-/// A property wrapper that manages reactive state conforming to `BehavioralStateContract`.
-///
-/// `ManagedState` offers automatic rule binding, dynamic UI syncing, and observable state changes using Combine.
-/// Suitable for ViewModels and dynamic UI frameworks like SwiftUI or UIKit.
-///
-/// - Note: This type supports `@dynamicMemberLookup` to simplify access to underlying properties.
-///
-/// ⚠️ **Thread Safety**: While individual property access is thread-safe, compound operations
-/// like `state.count += 1` are NOT atomic and may cause race conditions in concurrent code.
-/// Use direct assignment for thread-safe updates: `state.count = newValue`.
+/// - Important: A single read or a single write is thread-safe. A compound operation, such as `state.count += 1`, is not atomic.
+///   Use `withLock(_:)` for a read-modify-write operation.
 ///
 /// ### Example
 /// ```swift
@@ -116,19 +83,17 @@ public enum ManagedStateLock {
 @dynamicCallable
 @propertyWrapper
 public final class ManagedState<Value: BehavioralStateContract> {
-    /// Internal subject used to emit value changes to observers.
+    /// The subject that sends each change of the managed value.
     ///
-    /// This subject drives the `publisher` and emits a `Change<Value>` when the wrapped model value changes.
-    /// Duplicate values are filtered using `Equatable`.
+    /// `publisher` and `diffedPublisher` use this subject and remove duplicate values.
     private let valueSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
-    /// Internal subject used to emit rule changes to observers.
-    ///
-    /// This subject drives rule evaluation and emits changes when the wrapped model value changes.
+    /// The subject that sends a local copy of the value to the binding rules on each rule pass.
     private let rulesSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
+    private let objectWillChangeSubject = PassthroughSubject<Void, Never>()
 
-    /// The internal stored value being managed.
+    /// The managed value. The lock protects it.
     private var innerValue: Value
-    /// The locking mechanism used for thread safety.
+    /// The lock that protects the managed value.
     private let lock: NSLocking
     /// The `ObservationRegistrar` that tracks reads and changes of `wrappedValue`.
     ///
@@ -136,12 +101,11 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// The type is `Any?` because a stored property cannot have a type that is not available on every supported platform.
     private let observationRegistrar: Any?
 
-    /// The current model value being managed.
+    /// The managed value.
     ///
-    /// Assigning a new value triggers rule evaluation and emits changes to subscribers.
-    /// If the value is equal to the existing one, no event is emitted.
-    ///
-    /// A read registers an Observation access, and a change notifies Observation observers.
+    /// A write of a different value runs the rules, stores the result, and notifies the subscribers and observers.
+    /// A write of an equal value has no effect.
+    /// A read registers an Observation access.
     public var wrappedValue: Value {
         get {
             registerObservationAccess()
@@ -155,39 +119,42 @@ public final class ManagedState<Value: BehavioralStateContract> {
                     return
                 }
 
-                send(.init(old: innerValue, new: newValue, isInitial: false))
+                applyRules(with: .init(old: innerValue, new: newValue, isInitial: false))
             }
         }
     }
 
-    /// Accesses the property wrapper instance for binding or observing capabilities.
+    /// The state itself, available as `$state`.
     ///
-    /// Use this projected property (`$state`) to access Combine-based observation tools.
+    /// Use it to get publishers and bindings.
     ///
     /// ### Example
     /// ```swift
     /// $state.publisher
     ///     .sink { print($0) }
-    ///     .store(in: &bag)
+    ///     .store(in: &cancellables)
     /// ```
     public var projectedValue: ManagedState<Value> {
         return self
     }
 
-    /// Array of cancellable subscriptions for binding rules.
+    /// The subscriptions of the binding rules.
     private var bindingRules: [AnyCancellable] = []
-    /// Array of notification tokens for external event rules.
+    /// The tokens of the rules from `applyAnyRules(to:)`.
     private var notificationRules: [Any] = []
 
-    /// Creates a new managed state wrapper with the specified initial value.
+    /// Creates a state with an initial value.
     ///
-    /// This initializer also sets up all declared binding and notification rules and emits an initial change.
+    /// The initializer creates the rules of the value type and runs the rules on the initial value.
     ///
-    /// - Parameter wrappedValue: The initial value to be managed.
+    /// - Parameters:
+    ///   - wrappedValue: The initial value.
+    ///   - lock: The lock type. If the value is `nil`, the state uses `ManagedStateDefaultLock`.
     ///
     /// ### Example
     /// ```swift
     /// @ManagedState var model = MyModel()
+    /// @ManagedState(lock: .absent) var localModel = MyModel()
     /// ```
     public init(wrappedValue: Value, lock: ManagedStateLock? = nil) {
         self.innerValue = wrappedValue
@@ -203,46 +170,47 @@ public final class ManagedState<Value: BehavioralStateContract> {
             self.lock = AbsentLock()
         case .synced:
             self.lock = NSRecursiveLock()
-        case let .custom(nSLocking):
-            self.lock = nSLocking
+        case let .custom(customLock):
+            self.lock = customLock
         }
-        self.prevValues = .init(old: nil, new: wrappedValue, isInitial: true)
 
-        // initial `observe`
         @UIState
-        var bindable = wrappedValue
-        self.valueSubject = .init(.init(old: nil, binding: $bindable()))
-        self.rulesSubject = .init(.init(old: nil, binding: $bindable()))
+        var initialValue = wrappedValue
+        let valueSubject = CurrentValueSubject<DiffedValue<Value>, Failure>(.init(old: nil, binding: $initialValue()))
+        self.valueSubject = valueSubject
+        self.diffedPublisher = valueSubject
+            .removeUnchangedAfterFirst()
+            .eraseToAnyPublisher()
+        self.publisher = valueSubject
+            .map(\.new)
+            .removeDuplicates()
+            .eraseToAnyPublisher()
+        self.rulesSubject = .init(.init(old: nil, binding: $initialValue()))
 
-        // create rules
-        notificationRules += createAnyRules(observe())
+        notificationRules += createAnyRules(unretainedBinding(fallback: wrappedValue))
         bindingRules += createBindingRules()
 
         self.lock.withLock {
-            // send initial state
-            send(.init(old: wrappedValue, new: bindable, isInitial: true))
+            applyRules(with: .init(old: wrappedValue, new: initialValue, isInitial: true))
         }
     }
 
-    /// A publisher that emits only distinct changes to the wrapped value.
+    /// A publisher that emits each change of the managed value as a `DiffedValue`.
     ///
-    /// Use this publisher to observe meaningful state transitions.
+    /// The `old` property contains the value before the change. The `new` property reads the current value of the state.
+    /// A new subscriber immediately gets the current value.
     ///
     /// ### Example
     /// ```swift
-    /// $state.publisher
+    /// $state.diffedPublisher
     ///     .sink { diff in print("Changed:", diff) }
     ///     .store(in: &cancellables)
     /// ```
-    public lazy var diffedPublisher: AnyPublisher<DiffedValue<Value>, Failure> = {
-        return valueSubject
-            .removeDuplicates()
-            .eraseToAnyPublisher()
-    }()
+    public let diffedPublisher: AnyPublisher<DiffedValue<Value>, Failure>
 
-    /// A publisher that emits only the new values when the wrapped value changes.
+    /// A publisher that emits the managed value after each change.
     ///
-    /// Use this publisher to observe the current value without the diff information.
+    /// A new subscriber immediately gets the current value. The publisher removes duplicate values.
     ///
     /// ### Example
     /// ```swift
@@ -250,20 +218,14 @@ public final class ManagedState<Value: BehavioralStateContract> {
     ///     .sink { newValue in print("New value:", newValue) }
     ///     .store(in: &cancellables)
     /// ```
-    public lazy var publisher: AnyPublisher<Value, Failure> = {
-        return valueSubject
-            .map(\.new)
-            .removeDuplicates()
-            .eraseToAnyPublisher()
-    }()
+    public let publisher: AnyPublisher<Value, Failure>
 
-    /// Atomically updates the managed state using a closure to prevent race conditions.
+    /// Changes the managed value atomically.
     ///
-    /// This method ensures that read-modify-write operations are atomic and thread-safe.
-    /// All operations within the closure are executed under a single lock, preventing
-    /// race conditions in concurrent code.
+    /// The closure gets a copy of the current value. The state holds the lock during the closure and the rules.
+    /// If the closure changes the value, the state runs the rules on the result and notifies the subscribers and observers one time.
     ///
-    /// - Parameter block: A closure that receives an inout reference to the current value.
+    /// - Parameter block: The closure that changes the value.
     ///
     /// ### Example
     /// ```swift
@@ -278,57 +240,36 @@ public final class ManagedState<Value: BehavioralStateContract> {
             block(&newValue)
 
             if innerValue != newValue {
-                send(.init(old: innerValue, new: newValue, isInitial: false))
+                applyRules(with: .init(old: innerValue, new: newValue, isInitial: false))
             }
         }
     }
 
-    /// Creates notification rules for the managed state.
-    ///
-    /// This method delegates to the `applyAnyRules` method of the wrapped value type.
-    @AnyTokenBuilder<Any>
+    /// Creates the rules from `applyAnyRules(to:)` of the value type.
     private func createAnyRules(_ bindable: UIBinding<Value>) -> [Any] {
-        Value.applyAnyRules(to: bindable)
+        return Value.applyAnyRules(to: bindable)
     }
 
-    /// Creates binding rules for the managed state.
-    ///
-    /// This method delegates to the `applyBindingRules` method of the wrapped value type.
-    @SubscriptionBuilder
+    /// Creates the binding rules from `applyBindingRules(to:)` of the value type.
     private func createBindingRules() -> [AnyCancellable] {
-        Value.applyBindingRules(to: rulesSubject.eraseToAnyPublisher())
+        return Value.applyBindingRules(to: rulesSubject.eraseToAnyPublisher())
     }
 
-    /// The previous values for change tracking.
-    private var prevValues: PairedValue<Value>
-
-    /// Sends a value change if it represents a meaningful update.
+    /// Runs the rule passes until the rules converge, stores the result, and notifies the subscribers and observers.
     ///
-    /// - Parameter values: The paired old and new values to potentially send.
-    private func send(_ values: PairedValue<Value>) {
-        guard values.isInitial || values.old != values.new else {
-            return
-        }
-
-        prevValues = values
-
-        applyRules(with: values)
-    }
-
-    /// Applies business rules to the state and handles cyclic dependency detection.
+    /// Each rule pass changes a local copy of the value. The method stores only the final result and notifies one time.
+    /// If the change is not initial and the result is equal to the old value, the method does nothing.
     ///
-    /// The rules change a local copy of the value. The method stores only the final result and notifies the observers one time.
-    ///
-    /// - Parameter values: The paired old and new values to process.
+    /// - Parameter values: The old value and the new value of the change.
     private func applyRules(with values: PairedValue<Value>) {
         var counter = 0
         var pair: PairedValue<Value> = values
         repeat {
-            pair = modify(pair)
+            pair = applyRulesOnce(pair)
             counter += 1
         } while pair.old != pair.new && counter < ManagedStateCyclicDependencyMaxDepth
 
-        assert(ManagedStateCyclicDependencyWarning || counter < 100, "Cyclic dependency detected in state rules")
+        assert(!ManagedStateCyclicDependencyWarning || pair.old == pair.new, "Cyclic dependency detected in state rules")
 
         guard values.isInitial || values.old != pair.new else {
             return
@@ -337,11 +278,20 @@ public final class ManagedState<Value: BehavioralStateContract> {
         if values.isInitial {
             innerValue = pair.new
         } else {
+            objectWillChangeSubject.send()
             withObservationMutation {
                 innerValue = pair.new
             }
         }
-        valueSubject.send(.init(old: values.old, binding: self()))
+        valueSubject.send(.init(old: values.old, binding: unretainedBinding(fallback: pair.new)))
+    }
+
+    private func unretainedBinding(fallback: Value) -> UIBinding<Value> {
+        return .init(publisher: diffedPublisher) { [weak self] in
+            return self?.wrappedValue ?? fallback
+        } set: { [weak self] newValue in
+            self?.wrappedValue = newValue
+        }
     }
 
     /// Registers a read of `wrappedValue` with the Observation framework.
@@ -356,13 +306,13 @@ public final class ManagedState<Value: BehavioralStateContract> {
         registrar.access(self, keyPath: \.wrappedValue)
     }
 
-    /// Runs a change of the stored value and notifies Observation observers about it.
+    /// Runs a change of the managed value and notifies Observation observers about it.
     ///
     /// The observers receive `willSet` before the change and `didSet` after it, as with the `@Observable` macro.
     /// An observer that reads `wrappedValue` in `willSet` gets the old value.
     /// `applyRules(with:)` calls this method while it holds the lock, so an observer that reads `wrappedValue` needs a recursive lock.
     ///
-    /// - Parameter mutation: The closure that changes the stored value.
+    /// - Parameter mutation: The closure that changes the managed value.
     private func withObservationMutation(_ mutation: () -> Void) {
         guard #available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *),
               let registrar = observationRegistrar as? ObservationRegistrar else {
@@ -373,11 +323,13 @@ public final class ManagedState<Value: BehavioralStateContract> {
         registrar.withMutation(of: self, keyPath: \.wrappedValue, mutation)
     }
 
-    /// Modifies the state by applying business rules and notifying rule subscribers.
+    /// Runs one rule pass on a local copy of the value.
     ///
-    /// - Parameter values: The paired old and new values to modify.
-    /// - Returns: The modified paired values after applying rules.
-    private func modify(_ values: PairedValue<Value>) -> PairedValue<Value> {
+    /// The method calls `applyRules()` on the copy and sends the copy to the binding rules.
+    ///
+    /// - Parameter values: The input of the rule pass.
+    /// - Returns: A pair of the input and the result of the rule pass.
+    private func applyRulesOnce(_ values: PairedValue<Value>) -> PairedValue<Value> {
         @UIState
         var bindable: Value = values.new
         bindable.applyRules()
@@ -395,7 +347,7 @@ extension ManagedState: SafeBinding {}
 ///
 /// SwiftUI and `withObservationTracking(_:onChange:)` track reads of `wrappedValue` and of its dynamic members.
 /// Every change of the managed value notifies the observers one time. A change to an equal value does not notify them.
-/// The observers receive the notification before the stored value changes, as with the `@Observable` macro.
+/// The observers receive the notification before the managed value changes, as with the `@Observable` macro.
 ///
 /// ### Example
 /// ```swift
@@ -417,34 +369,32 @@ extension ManagedState: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
     public typealias Failure = Never
 
-    /// Attaches the specified subscriber to receive diffed value changes.
+    /// Attaches a subscriber that receives each change as a `DiffedValue`.
     ///
-    /// This method forwards the subscription to the internal `diffedPublisher`,
-    /// which emits `DiffedValue` containing both old and new values.
+    /// The method forwards the subscriber to `diffedPublisher`.
     ///
-    /// - Parameter subscriber: The subscriber to attach to this publisher.
+    /// - Parameter subscriber: The subscriber to attach.
     public func receive<S>(subscriber: S) where S: Subscriber, Never == S.Failure, DiffedValue<Value> == S.Input {
         diffedPublisher.receive(subscriber: subscriber)
     }
 
-    /// Attaches the specified subscriber to receive only new values.
+    /// Attaches a subscriber that receives the managed value after each change.
     ///
-    /// This method forwards the subscription to the internal `publisher`,
-    /// which emits only the new values without the old values.
+    /// The method forwards the subscriber to `publisher`.
     ///
-    /// - Parameter subscriber: The subscriber to attach to this publisher.
+    /// - Parameter subscriber: The subscriber to attach.
     public func receive<S>(subscriber: S) where S: Subscriber, Never == S.Failure, Value == S.Input {
         publisher.receive(subscriber: subscriber)
     }
 }
 
 public extension ManagedState {
-    /// Provides a two-way binding interface for a property of the managed value using dynamic member lookup.
+    /// Returns a two-way binding to a property of the managed value.
     ///
-    /// Use this subscript to bind UI components to individual properties within the wrapped state.
+    /// Use the binding to connect a UI component to one property.
     ///
-    /// - Parameter keyPath: A writable key path to a property of the wrapped value.
-    /// - Returns: A `UIBinding` representing the two-way binding for the specified property.
+    /// - Parameter keyPath: A writable key path to a property of the managed value.
+    /// - Returns: A binding to the property.
     ///
     /// ### Example
     /// ```swift
@@ -454,47 +404,46 @@ public extension ManagedState {
         return observe(keyPath)
     }
 
-    /// Accesses and modifies properties of the wrapped value using dynamic member lookup.
+    /// Reads or writes a property of the managed value.
     ///
-    /// This subscript allows direct interaction with the stored value as if it were a normal instance.
+    /// A write changes the managed value and runs the rules.
     ///
-    /// ⚠️ **Thread Safety**: While individual get/set operations are thread-safe, compound operations
-    /// like `state.count += 1` are NOT atomic and may cause race conditions in concurrent code.
-    /// Use direct assignment for thread-safe updates: `state.count = newValue`.
+    /// - Important: A single read or a single write is thread-safe. A compound operation, such as `state.count += 1`, is not atomic.
+    ///   Use `withLock(_:)` for a read-modify-write operation.
     ///
-    /// - Parameter keyPath: A writable key path to a property of the wrapped value.
-    /// - Returns: The current value at the specified key path.
+    /// - Parameter keyPath: A writable key path to a property of the managed value.
+    /// - Returns: The current value of the property.
     ///
     /// ### Example
     /// ```swift
-    /// state.username = "John"  // ✅ Thread-safe
-    /// print(state.username)   // ✅ Thread-safe
+    /// state.username = "John"
+    /// print(state.username)
     ///
-    /// // ❌ NOT thread-safe in concurrent code:
-    /// // state.count += 1
-    ///
-    /// // ✅ Thread-safe alternative:
-    /// state.count = state.count + 1
+    /// state.withLock { value in
+    ///     value.count += 1
+    /// }
     /// ```
     subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> V {
         get {
-            wrappedValue[keyPath: keyPath]
+            return wrappedValue[keyPath: keyPath]
         }
         set {
             wrappedValue[keyPath: keyPath] = newValue
         }
     }
 
+    /// Reads a read-only property of the managed value.
+    ///
+    /// - Parameter keyPath: A key path to a property of the managed value.
+    /// - Returns: The current value of the property.
     subscript<V>(dynamicMember keyPath: KeyPath<Value, V>) -> V {
-        wrappedValue[keyPath: keyPath]
+        return wrappedValue[keyPath: keyPath]
     }
 
-    /// Dynamically calls the managed state to return a binding to the entire value.
+    /// Returns a two-way binding to the managed value for the call syntax `$state()`.
     ///
-    /// This method enables callable syntax for accessing the full binding.
-    ///
-    /// - Parameter withArguments: Unused arguments array.
-    /// - Returns: A `UIBinding` for the entire managed value.
+    /// - Parameter withArguments: The call arguments. The method ignores them.
+    /// - Returns: A binding to the managed value.
     ///
     /// ### Example
     /// ```swift
@@ -510,11 +459,9 @@ public extension ManagedState {
     ///
     /// @ManagedState var user = User(name: "Alice", age: 30)
     ///
-    /// // Get binding to entire user object
     /// let userBinding = $user()
     /// userBinding.wrappedValue.name = "Bob"
     ///
-    /// // Observe changes to entire user
     /// $user().sink { user in
     ///     print("User updated: \(user.name), \(user.age)")
     /// }.store(in: &cancellables)
@@ -523,12 +470,12 @@ public extension ManagedState {
         return observe()
     }
 
-    /// Dynamically calls the managed state with a key path to return a nested binding.
+    /// Returns a two-way binding to a property of the managed value for the call syntax `$state(\.property)`.
     ///
-    /// This method enables callable syntax for accessing nested property bindings.
+    /// The method uses only the first key path. If `args` is empty, the method stops the program with a fatal error.
     ///
-    /// - Parameter args: An array containing a single writable key path.
-    /// - Returns: A `UIBinding` for the nested property.
+    /// - Parameter args: The key paths of the call.
+    /// - Returns: A binding to the property.
     ///
     /// ### Example
     /// ```swift
@@ -544,11 +491,9 @@ public extension ManagedState {
     ///
     /// @ManagedState var user = User(name: "Alice", age: 30)
     ///
-    /// // Get binding to specific property
     /// let nameBinding = $user(\.name)
     /// nameBinding.wrappedValue = "Bob"
     ///
-    /// // Observe changes to specific property
     /// $user(\.age).sink { age in
     ///     print("Age changed to: \(age)")
     /// }.store(in: &cancellables)
@@ -563,36 +508,34 @@ public extension ManagedState {
 }
 
 extension ManagedState: Equatable where Value: Equatable {
+    /// Compares the managed values of two instances.
+    ///
+    /// Two different instances are equal when their managed values are equal.
     public static func ==(lhs: ManagedState<Value>, rhs: ManagedState<Value>) -> Bool {
         return lhs.wrappedValue == rhs.wrappedValue
     }
 }
 
 extension ManagedState: Hashable where Value: Hashable {
+    /// Hashes the current managed value.
+    ///
+    /// The hash value changes when the managed value changes.
+    /// Do not change the managed value while the instance is an element of a `Set` or a key of a `Dictionary`.
+    /// After such a change, the collection cannot find the instance.
     public func hash(into hasher: inout Hasher) {
         hasher.combine(wrappedValue)
     }
 }
 
 extension ManagedState: CustomStringConvertible where Value: CustomStringConvertible {
-    /// A textual representation of the managed value.
-    ///
-    /// This property forwards the description from the managed value,
-    /// providing a string representation suitable for display purposes.
-    ///
-    /// - Returns: A string representation of the managed value.
+    /// The description of the managed value.
     public var description: String {
         return wrappedValue.description
     }
 }
 
 extension ManagedState: CustomDebugStringConvertible where Value: CustomDebugStringConvertible {
-    /// A textual representation of the managed value, suitable for debugging.
-    ///
-    /// This property forwards the debug description from the managed value,
-    /// providing detailed information useful for debugging purposes.
-    ///
-    /// - Returns: A debug string representation of the managed value.
+    /// The debug description of the managed value.
     public var debugDescription: String {
         return wrappedValue.debugDescription
     }
@@ -600,12 +543,7 @@ extension ManagedState: CustomDebugStringConvertible where Value: CustomDebugStr
 
 @available(macOS 13, iOS 16, tvOS 16, watchOS 9, *)
 extension ManagedState: CustomLocalizedStringResourceConvertible where Value: CustomLocalizedStringResourceConvertible {
-    /// A localized string resource representation of the managed value.
-    ///
-    /// This property forwards the localized string resource from the managed value,
-    /// enabling localization support for the managed state.
-    ///
-    /// - Returns: A localized string resource representation of the managed value.
+    /// The localized string resource of the managed value.
     public var localizedStringResource: LocalizedStringResource {
         return wrappedValue.localizedStringResource
     }
@@ -613,43 +551,23 @@ extension ManagedState: CustomLocalizedStringResourceConvertible where Value: Cu
 
 extension ManagedState: @unchecked Sendable {}
 
-/// Represents a transition between two values of the same type.
+/// A change from an old value to a new value.
 ///
-/// `PairedValue` is used internally to track state changes. It captures both the old and new values,
-/// and whether the transition was the initial emission.
-///
-/// - Parameters:
-///   - old: The previous value, or `nil` if this is the first emission.
-///   - new: The new value after the change.
-///   - isInitial: A Boolean value indicating whether this is the initial emission.
-///
-/// ### Example
-/// ```swift
-/// let diff = PairedValue(old: nil, new: state, isInitial: true)
-/// print("Initial:", diff.new)
-/// ```
+/// `ManagedState` uses this type for the input and the result of a rule pass.
+/// `isInitial` is `true` only for the change that the initializer makes.
 private struct PairedValue<Value> {
     let old: Value?
     let new: Value
     var isInitial: Bool = false
 }
 
-extension PairedValue: CustomDebugStringConvertible {
-    /// A debug-friendly textual representation of the paired value.
-    ///
-    /// Displays both the old and new value states for inspection in logs or consoles.
-    var debugDescription: String {
-        "DiffedValue(old: \(String(describing: old)), new: \(new))"
-    }
-}
-
-/// A no-op locking mechanism that performs no synchronization.
+/// A lock that does nothing.
 ///
-/// Use `AbsentLock` in single-threaded or testing contexts where locking is not needed.
+/// `ManagedState` uses this lock for `ManagedStateLock.absent`.
 private final class AbsentLock: NSLocking {
-    /// No-op lock.
+    /// Does nothing.
     func lock() {}
 
-    /// No-op unlock.
+    /// Does nothing.
     func unlock() {}
 }
