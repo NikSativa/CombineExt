@@ -807,6 +807,47 @@ viewModel.$state.publisher
 viewModel.state.title = "Updated" // triggers sink + objectWillChange
 ```
 
+## 🔭 SwiftUI Integration with Observation
+
+`ManagedState` conforms to `Observable` from the Observation framework. This support needs iOS 17, macOS 14, tvOS 17, watchOS 10, or visionOS 1.
+
+An `@Observable` ViewModel can keep its state in `@ManagedState`. The `@Observable` macro cannot track a property that has a property wrapper, so mark the property with `@ObservationIgnored`. SwiftUI still tracks the state, because each read of `wrappedValue` registers an access on the `ManagedState` instance.
+
+```swift
+@Observable
+final class ViewModel {
+    @ObservationIgnored
+    @ManagedState
+    private var viewState = AppState()
+
+    var state: AppState {
+        return viewState
+    }
+
+    func rename(to title: String) {
+        viewState.title = title
+    }
+}
+
+struct ContentView: View {
+    @State private var viewModel = ViewModel()
+
+    var body: some View {
+        Text(viewModel.state.title)
+        Button("Update") {
+            viewModel.rename(to: "Updated")
+        }
+    }
+}
+```
+
+- Each change of the managed value notifies the observers one time. A `withLock(_:)` call that changes several fields also notifies them one time.
+- The rules run before the notification. The observers get only the final value, not the intermediate values of the rules.
+- A change to an equal value does not notify the observers.
+- The observers receive the notification before the stored value changes, as with the `@Observable` macro. A read in `onChange` returns the old value.
+- `ManagedState` notifies the observers while it holds its lock. If an observer reads the value in `onChange`, use `.synced`, `.absent`, or a recursive `.custom` lock.
+- Change a value that a view reads on the main actor, as with any `@Observable` type.
+
 ## 📱 Platform Support
 
 CombineExt supports all major Apple platforms:

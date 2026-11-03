@@ -250,4 +250,3 @@ public struct IgnoredState<Value>: Hashable, CustomReflectable {
 }
 
 extension IgnoredState: Sendable where Value: Sendable {}
-

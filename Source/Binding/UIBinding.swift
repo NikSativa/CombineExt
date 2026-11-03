@@ -307,4 +307,3 @@ extension UIBinding: CustomLocalizedStringResourceConvertible where Value: Custo
 }
 
 extension UIBinding: @unchecked Sendable {}
-

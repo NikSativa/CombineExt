@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Observation
 
 /// A global flag that enables or disables cyclic dependency assertions in state rules.
 ///
@@ -75,6 +76,10 @@ public enum ManagedStateLock {
 
     /// Provides a custom locking mechanism conforming to `NSLocking`.
     ///
+    /// ⚠️ **Important**: `ManagedState` notifies Combine subscribers and Observation observers while it holds the lock.
+    /// If they read the state during the notification, they take the lock again on the same thread.
+    /// Use a recursive lock, such as `NSRecursiveLock`, in this case. A non-recursive lock, such as `NSLock`, causes a deadlock.
+    ///
     /// - Parameter lock: An object conforming to `NSLocking`, such as `NSRecursiveLock` or `NSLock`.
     case custom(NSLocking)
 }
@@ -125,14 +130,22 @@ public final class ManagedState<Value: BehavioralStateContract> {
     private var innerValue: Value
     /// The locking mechanism used for thread safety.
     private let lock: NSLocking
+    /// The `ObservationRegistrar` that tracks reads and changes of `wrappedValue`.
+    ///
+    /// The value is `nil` on platforms without the Observation framework.
+    /// The type is `Any?` because a stored property cannot have a type that is not available on every supported platform.
+    private let observationRegistrar: Any?
 
     /// The current model value being managed.
     ///
     /// Assigning a new value triggers rule evaluation and emits changes to subscribers.
     /// If the value is equal to the existing one, no event is emitted.
+    ///
+    /// A read registers an Observation access, and a change notifies Observation observers.
     public var wrappedValue: Value {
         get {
-            lock.withLock {
+            registerObservationAccess()
+            return lock.withLock {
                 return innerValue
             }
         }
@@ -178,6 +191,12 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// ```
     public init(wrappedValue: Value, lock: ManagedStateLock? = nil) {
         self.innerValue = wrappedValue
+
+        if #available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *) {
+            self.observationRegistrar = ObservationRegistrar()
+        } else {
+            self.observationRegistrar = nil
+        }
 
         switch lock ?? ManagedStateDefaultLock {
         case .absent:
@@ -298,6 +317,8 @@ public final class ManagedState<Value: BehavioralStateContract> {
 
     /// Applies business rules to the state and handles cyclic dependency detection.
     ///
+    /// The rules change a local copy of the value. The method stores only the final result and notifies the observers one time.
+    ///
     /// - Parameter values: The paired old and new values to process.
     private func applyRules(with values: PairedValue<Value>) {
         var counter = 0
@@ -313,8 +334,43 @@ public final class ManagedState<Value: BehavioralStateContract> {
             return
         }
 
-        innerValue = pair.new
+        if values.isInitial {
+            innerValue = pair.new
+        } else {
+            withObservationMutation {
+                innerValue = pair.new
+            }
+        }
         valueSubject.send(.init(old: values.old, binding: self()))
+    }
+
+    /// Registers a read of `wrappedValue` with the Observation framework.
+    ///
+    /// The getter calls this method before it takes the lock.
+    private func registerObservationAccess() {
+        guard #available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *),
+              let registrar = observationRegistrar as? ObservationRegistrar else {
+            return
+        }
+
+        registrar.access(self, keyPath: \.wrappedValue)
+    }
+
+    /// Runs a change of the stored value and notifies Observation observers about it.
+    ///
+    /// The observers receive `willSet` before the change and `didSet` after it, as with the `@Observable` macro.
+    /// An observer that reads `wrappedValue` in `willSet` gets the old value.
+    /// `applyRules(with:)` calls this method while it holds the lock, so an observer that reads `wrappedValue` needs a recursive lock.
+    ///
+    /// - Parameter mutation: The closure that changes the stored value.
+    private func withObservationMutation(_ mutation: () -> Void) {
+        guard #available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *),
+              let registrar = observationRegistrar as? ObservationRegistrar else {
+            mutation()
+            return
+        }
+
+        registrar.withMutation(of: self, keyPath: \.wrappedValue, mutation)
     }
 
     /// Modifies the state by applying business rules and notifying rule subscribers.
@@ -334,6 +390,28 @@ public final class ManagedState<Value: BehavioralStateContract> {
 }
 
 extension ManagedState: SafeBinding {}
+
+/// Makes `ManagedState` observable with the Observation framework.
+///
+/// SwiftUI and `withObservationTracking(_:onChange:)` track reads of `wrappedValue` and of its dynamic members.
+/// Every change of the managed value notifies the observers one time. A change to an equal value does not notify them.
+/// The observers receive the notification before the stored value changes, as with the `@Observable` macro.
+///
+/// ### Example
+/// ```swift
+/// @Observable
+/// final class ViewModel {
+///     @ObservationIgnored
+///     @ManagedState
+///     private var viewState = AppState()
+///
+///     var state: AppState {
+///         return viewState
+///     }
+/// }
+/// ```
+@available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *)
+extension ManagedState: Observation.Observable {}
 
 extension ManagedState: Combine.Publisher {
     public typealias Output = DiffedValue<Value>
