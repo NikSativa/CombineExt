@@ -27,19 +27,18 @@ public nonisolated(unsafe) var ManagedStateCyclicDependencyWarning: Bool = true
 /// ManagedStateCyclicDependencyMaxDepth = 50
 /// ```
 public nonisolated(unsafe) var ManagedStateCyclicDependencyMaxDepth: Int = 100
-/// The lock type that `ManagedState` uses when the initializer gets no lock.
+/// The previous name of `StateDefaultLock`.
 ///
-/// Set `.absent`, `.synced`, or `.custom(_:)` to change the lock type of all new instances.
-/// The change has no effect on existing instances.
-///
-/// - Note: The default value is `.synced`.
-///
-/// ### Example
-/// ```swift
-/// ManagedStateDefaultLock = .absent
-/// @ManagedState var model = MyModel()
-/// ```
-public nonisolated(unsafe) var ManagedStateDefaultLock: ManagedStateLock = .synced
+/// A read returns `StateDefaultLock`. A write changes `StateDefaultLock`.
+@available(*, deprecated, renamed: "StateDefaultLock")
+public var ManagedStateDefaultLock: StateLock {
+    get {
+        return StateDefaultLock
+    }
+    set {
+        StateDefaultLock = newValue
+    }
+}
 
 extension ManagedState: ObservableObject {
     /// A publisher that emits before each change of the managed value.
@@ -57,7 +56,14 @@ extension ManagedState: ObservableObject {
 /// Then `ManagedState` stores the final result and notifies the subscribers and observers.
 /// `ManagedState` supports Combine, `ObservableObject`, and the Observation framework. Use it in a ViewModel for SwiftUI or UIKit.
 ///
-/// The type supports `@dynamicMemberLookup` for direct access to the properties of the managed value.
+/// The projected value gives access to the properties of the managed value, as in SwiftUI:
+///
+/// - `state.title` is the value of the property.
+/// - `$state.title` is a SwiftUI `Binding` to the property.
+/// - `$state.ui.title` is a `UIBinding` to the property.
+/// - `$state[\.title]` is the value of the property. With the Observation framework, this read tracks only the property.
+///
+/// With the Observation framework, a read of `wrappedValue` tracks the whole value.
 ///
 /// - Important: A single read or a single write is thread-safe. A compound operation, such as `state.count += 1`, is not atomic.
 ///   Use `withLock(_:)` for a read-modify-write operation.
@@ -91,35 +97,25 @@ public final class ManagedState<Value: BehavioralStateContract> {
     private let rulesSubject: CurrentValueSubject<DiffedValue<Value>, Failure>
     private let objectWillChangeSubject = PassthroughSubject<Void, Never>()
 
-    /// The managed value. The lock protects it.
-    private var innerValue: Value
-    /// The lock that protects the managed value.
-    private let lock: NSLocking
-    /// The `ObservationRegistrar` that tracks reads and changes of `wrappedValue`.
-    ///
-    /// The value is `nil` on platforms without the Observation framework.
-    /// The type is `Any?` because a stored property cannot have a type that is not available on every supported platform.
-    private let observationRegistrar: Any?
+    private let storage: StateStorage<Value>
 
     /// The managed value.
     ///
     /// A write of a different value runs the rules, stores the result, and notifies the subscribers and observers.
     /// A write of an equal value has no effect.
-    /// A read registers an Observation access.
+    /// A read registers an Observation access to the whole value. An observer that reads `wrappedValue` gets a notification for each change.
+    /// To track one field, read the field with `subscript(_:)`, for example `$state[\.title]` or `$state[\.trip.title]`.
     public var wrappedValue: Value {
         get {
-            registerObservationAccess()
-            return lock.withLock {
-                return innerValue
-            }
+            return storage.read()
         }
         set {
-            lock.withLock {
-                if innerValue == newValue {
+            storage.lock.withLock {
+                if storage.lockedValue == newValue {
                     return
                 }
 
-                applyRules(with: .init(old: innerValue, new: newValue, isInitial: false))
+                applyRules(with: .init(old: storage.lockedValue, new: newValue, isInitial: false))
             }
         }
     }
@@ -149,32 +145,17 @@ public final class ManagedState<Value: BehavioralStateContract> {
     ///
     /// - Parameters:
     ///   - wrappedValue: The initial value.
-    ///   - lock: The lock type. If the value is `nil`, the state uses `ManagedStateDefaultLock`.
+    ///   - lock: The lock type. If the value is `nil`, the state uses `StateDefaultLock`.
     ///
     /// ### Example
     /// ```swift
     /// @ManagedState var model = MyModel()
     /// @ManagedState(lock: .absent) var localModel = MyModel()
     /// ```
-    public init(wrappedValue: Value, lock: ManagedStateLock? = nil) {
-        self.innerValue = wrappedValue
+    public init(wrappedValue: Value, lock: StateLock? = nil) {
+        self.storage = StateStorage(value: wrappedValue, lock: lock)
 
-        if #available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *) {
-            self.observationRegistrar = ObservationRegistrar()
-        } else {
-            self.observationRegistrar = nil
-        }
-
-        switch lock ?? ManagedStateDefaultLock {
-        case .absent:
-            self.lock = AbsentLock()
-        case .synced:
-            self.lock = NSRecursiveLock()
-        case let .custom(customLock):
-            self.lock = customLock
-        }
-
-        @UIState
+        @UIState(lock: .absent)
         var initialValue = wrappedValue
         let valueSubject = CurrentValueSubject<DiffedValue<Value>, Failure>(.init(old: nil, binding: $initialValue()))
         self.valueSubject = valueSubject
@@ -190,7 +171,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
         notificationRules += createAnyRules(unretainedBinding(fallback: wrappedValue))
         bindingRules += createBindingRules()
 
-        self.lock.withLock {
+        storage.lock.withLock {
             applyRules(with: .init(old: wrappedValue, new: initialValue, isInitial: true))
         }
     }
@@ -235,12 +216,12 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// }
     /// ```
     public func withLock(_ block: (inout Value) -> Void) {
-        lock.withLock {
-            var newValue = innerValue
+        storage.lock.withLock {
+            var newValue = storage.lockedValue
             block(&newValue)
 
-            if innerValue != newValue {
-                applyRules(with: .init(old: innerValue, new: newValue, isInitial: false))
+            if storage.lockedValue != newValue {
+                applyRules(with: .init(old: storage.lockedValue, new: newValue, isInitial: false))
             }
         }
     }
@@ -276,12 +257,10 @@ public final class ManagedState<Value: BehavioralStateContract> {
         }
 
         if values.isInitial {
-            innerValue = pair.new
+            storage.lockedValue = pair.new
         } else {
             objectWillChangeSubject.send()
-            withObservationMutation {
-                innerValue = pair.new
-            }
+            storage.replaceLockedValue(with: pair.new)
         }
         valueSubject.send(.init(old: values.old, binding: unretainedBinding(fallback: pair.new)))
     }
@@ -294,35 +273,6 @@ public final class ManagedState<Value: BehavioralStateContract> {
         }
     }
 
-    /// Registers a read of `wrappedValue` with the Observation framework.
-    ///
-    /// The getter calls this method before it takes the lock.
-    private func registerObservationAccess() {
-        guard #available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *),
-              let registrar = observationRegistrar as? ObservationRegistrar else {
-            return
-        }
-
-        registrar.access(self, keyPath: \.wrappedValue)
-    }
-
-    /// Runs a change of the managed value and notifies Observation observers about it.
-    ///
-    /// The observers receive `willSet` before the change and `didSet` after it, as with the `@Observable` macro.
-    /// An observer that reads `wrappedValue` in `willSet` gets the old value.
-    /// `applyRules(with:)` calls this method while it holds the lock, so an observer that reads `wrappedValue` needs a recursive lock.
-    ///
-    /// - Parameter mutation: The closure that changes the managed value.
-    private func withObservationMutation(_ mutation: () -> Void) {
-        guard #available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *),
-              let registrar = observationRegistrar as? ObservationRegistrar else {
-            mutation()
-            return
-        }
-
-        registrar.withMutation(of: self, keyPath: \.wrappedValue, mutation)
-    }
-
     /// Runs one rule pass on a local copy of the value.
     ///
     /// The method calls `applyRules()` on the copy and sends the copy to the binding rules.
@@ -330,7 +280,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
     /// - Parameter values: The input of the rule pass.
     /// - Returns: A pair of the input and the result of the rule pass.
     private func applyRulesOnce(_ values: PairedValue<Value>) -> PairedValue<Value> {
-        @UIState
+        @UIState(lock: .absent)
         var bindable: Value = values.new
         bindable.applyRules()
 
@@ -345,8 +295,15 @@ extension ManagedState: SafeBinding {}
 
 /// Makes `ManagedState` observable with the Observation framework.
 ///
-/// SwiftUI and `withObservationTracking(_:onChange:)` track reads of `wrappedValue` and of its dynamic members.
-/// Every change of the managed value notifies the observers one time. A change to an equal value does not notify them.
+/// SwiftUI and `withObservationTracking(_:onChange:)` track two kinds of reads:
+///
+/// - A read of `wrappedValue` tracks the whole value. Each change of the managed value notifies the observer.
+/// - A read of a field with `subscript(_:)`, such as `$state[\.trip.title]`, tracks only that field. A read through a SwiftUI binding, such as `$state.title`, also tracks only that field.
+///   A change notifies the observer only when the field gets a different value. If the type of the field is not `Equatable`, the read tracks the whole value.
+///
+/// One change sends one notification for the whole value and one notification for each tracked field that changes.
+/// `withObservationTracking(_:onChange:)` calls `onChange` only for the first notification, so one change calls `onChange` of an observer one time.
+/// A change to an equal value does not notify the observers.
 /// The observers receive the notification before the managed value changes, as with the `@Observable` macro.
 ///
 /// ### Example
@@ -355,10 +312,14 @@ extension ManagedState: SafeBinding {}
 /// final class ViewModel {
 ///     @ObservationIgnored
 ///     @ManagedState
-///     private var viewState = AppState()
+///     private(set) var state = AppState()
+/// }
 ///
-///     var state: AppState {
-///         return viewState
+/// struct TitleView: View {
+///     let viewModel: ViewModel
+///
+///     var body: some View {
+///         Text(viewModel.$state[\.title])
 ///     }
 /// }
 /// ```
@@ -389,55 +350,59 @@ extension ManagedState: Combine.Publisher {
 }
 
 public extension ManagedState {
-    /// Returns a two-way binding to a property of the managed value.
+    /// Reads a field of the managed value and tracks only this field with the Observation framework.
     ///
-    /// Use the binding to connect a UI component to one property.
+    /// The key path can contain more than one component. The state tracks the full key path as one field.
+    /// An observer that reads the field gets a notification only when a change of the managed value gives the field a different value.
+    /// An observer that reads `wrappedValue` still gets a notification for each change.
     ///
-    /// - Parameter keyPath: A writable key path to a property of the managed value.
-    /// - Returns: A binding to the property.
+    /// If the type of the field is not `Equatable`, the read tracks the whole value, as a read of `wrappedValue` does.
     ///
-    /// ### Example
-    /// ```swift
-    /// $state.username.wrappedValue = "new_username"
-    /// ```
-    subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> UIBinding<V> {
-        return observe(keyPath)
-    }
-
-    /// Reads or writes a property of the managed value.
+    /// The key path can be read-only, for example a computed property of the managed value.
     ///
-    /// A write changes the managed value and runs the rules.
-    ///
-    /// - Important: A single read or a single write is thread-safe. A compound operation, such as `state.count += 1`, is not atomic.
-    ///   Use `withLock(_:)` for a read-modify-write operation.
-    ///
-    /// - Parameter keyPath: A writable key path to a property of the managed value.
-    /// - Returns: The current value of the property.
+    /// - Parameter keyPath: A key path from the managed value to the field.
+    /// - Returns: The current value of the field.
     ///
     /// ### Example
     /// ```swift
-    /// state.username = "John"
-    /// print(state.username)
+    /// @ManagedState var state = BookingState()
     ///
-    /// state.withLock { value in
-    ///     value.count += 1
+    /// withObservationTracking {
+    ///     print($state[\.trip.title])
+    /// } onChange: {
+    ///     print("The trip title changes")
     /// }
+    ///
+    /// state.trip.seats = 4
+    /// state.trip.title = "Nice"
     /// ```
-    subscript<V>(dynamicMember keyPath: WritableKeyPath<Value, V>) -> V {
-        get {
-            return wrappedValue[keyPath: keyPath]
-        }
-        set {
-            wrappedValue[keyPath: keyPath] = newValue
-        }
+    subscript<Field>(_ keyPath: KeyPath<Value, Field>) -> Field {
+        return storage.read(keyPath)
     }
 
-    /// Reads a read-only property of the managed value.
+    /// A two-way binding to the managed value for UI components.
     ///
-    /// - Parameter keyPath: A key path to a property of the managed value.
-    /// - Returns: The current value of the property.
-    subscript<V>(dynamicMember keyPath: KeyPath<Value, V>) -> V {
-        return wrappedValue[keyPath: keyPath]
+    /// `ui` returns a `UIBinding` to the whole managed value. It is the same binding as the result of `$state()`.
+    /// A dynamic member of this binding always returns a `UIBinding` to a property. For example, `$state.ui.title` is a `UIBinding<String>`.
+    ///
+    /// Use `ui` to give one property to a component that reads the property, changes it, and subscribes to its changes.
+    /// `$state.title` returns a SwiftUI `Binding`. `$state.ui.title` returns a `UIBinding`.
+    ///
+    /// A write through the binding changes the managed value and runs the rules.
+    /// A read through the binding tracks the whole value with the Observation framework. To track one field, read it with `subscript(_:)`, for example `$state[\.title]`.
+    ///
+    /// If the managed value has its own property `ui`, `$state.ui` returns this binding, not the property. Use `$state[\.ui]` to read the property.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let title = viewModel.$viewState.ui.title
+    /// title.wrappedValue = "New title"
+    /// title
+    ///     .sink { print("Title:", $0) }
+    ///     .store(in: &cancellables)
+    /// ```
+    var ui: UIBinding<Value> {
+        return observe()
     }
 
     /// Returns a two-way binding to the managed value for the call syntax `$state()`.
@@ -559,15 +524,4 @@ private struct PairedValue<Value> {
     let old: Value?
     let new: Value
     var isInitial: Bool = false
-}
-
-/// A lock that does nothing.
-///
-/// `ManagedState` uses this lock for `ManagedStateLock.absent`.
-private final class AbsentLock: NSLocking {
-    /// Does nothing.
-    func lock() {}
-
-    /// Does nothing.
-    func unlock() {}
 }

@@ -46,6 +46,26 @@ final class UIBindingTests: XCTestCase {
 }
 
 extension UIBindingTests {
+    func testPlaceholderTakesUIBindingFromUIStateAndManagedState() {
+        @UIState
+        var uiState = TestModel(number: 1, binding: 0)
+        @ManagedState
+        var managedState = TestModel(number: 2, binding: 0)
+
+        @UIBinding(.placeholder)
+        var fromUIState: Int
+        @UIBinding(.placeholder)
+        var fromManagedState: Int
+        _fromUIState = $uiState.ui.number
+        _fromManagedState = $managedState.ui.number
+
+        fromUIState = 10
+        fromManagedState = 20
+
+        XCTAssertEqual(uiState.number, 10)
+        XCTAssertEqual(managedState.number, 20)
+    }
+
     func testUIBindingWithDifferentTypes() {
         @UIState
         var intValue: Int = 0
@@ -177,8 +197,8 @@ extension UIBindingTests {
         var numberValues: [Int] = []
         var bindingValues: [Int] = []
 
-        $model.number.sink { diff in numberValues.append(diff.new) }.store(in: &observers)
-        $model.binding.sink { diff in bindingValues.append(diff.new) }.store(in: &observers)
+        $model.ui.number.sink { diff in numberValues.append(diff.new) }.store(in: &observers)
+        $model.ui.binding.sink { diff in bindingValues.append(diff.new) }.store(in: &observers)
 
         model.number = 5
         model.binding = 10
@@ -407,9 +427,8 @@ extension UIBindingTests {
         @UIState
         var model = NestedModel(value: 0, text: "initial")
 
-        // Use explicit type annotations to resolve ambiguity
-        let valueBinding: UIBinding<Int> = $model.value
-        let textBinding: UIBinding<String> = $model.text
+        let valueBinding = $model.ui.value
+        let textBinding = $model.ui.text
 
         XCTAssertEqual(valueBinding.wrappedValue, 0)
         XCTAssertEqual(textBinding.wrappedValue, "initial")

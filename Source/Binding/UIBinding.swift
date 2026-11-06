@@ -19,10 +19,10 @@ import Foundation
 /// @UIState var user = Model(name: "Alice", age: 30)
 ///
 /// // Subscribe to changes (receives DiffedValue)
-/// $user.name.sink { diff in print("Name changed: \(diff.new)") }.store(in: &cancellables)
+/// $user.ui.name.sink { diff in print("Name changed: \(diff.new)") }.store(in: &cancellables)
 ///
 /// // Or subscribe to just new values
-/// $user.name.publisher.sink { newName in print("Name changed: \(newName)") }.store(in: &cancellables)
+/// $user.ui.name.publisher.sink { newName in print("Name changed: \(newName)") }.store(in: &cancellables)
 ///
 /// user.name = "Bob"  // Triggers sink output
 /// ```

@@ -115,6 +115,8 @@ countBinding.wrappedValue = 10
 displayBinding.wrappedValue = "Updated"
 ```
 
+`$model.ui` returns the same binding as `$model()`. A dynamic member of it returns a binding to a property: `$model.ui.count` is a `UIBinding<Int>`.
+
 ## 🪄 `@UIState` & `@UIBinding`
 
 Bind and observe nested values with minimal boilerplate:
@@ -123,12 +125,27 @@ Bind and observe nested values with minimal boilerplate:
 struct ViewState: Equatable { var isOn: Bool }
 @UIState var state = ViewState(isOn: false)
 
-$state.isOn
-    .sink { print("Toggle is now:", $0) }
+$state.ui.isOn
+    .sink { print("Toggle is now:", $0.new) }
     .store(in: &cancellables)
 
 state.isOn = true
 ```
+
+`@UIState` gives access to a property as `@ManagedState` does:
+
+| Form | Result |
+|---|---|
+| `state.isOn` | the value |
+| `$state[\.isOn]` | the value |
+| `$state.isOn` | SwiftUI `Binding<Bool>` |
+| `$state.ui.isOn` | `UIBinding<Bool>` |
+
+`$state.ui` returns the same binding as `$state()`.
+
+`@UIState` has a lock and supports the Observation framework, as `@ManagedState` does. A single read or a single write is thread-safe. Use `$state.withLock { value in ... }` for a read-modify-write operation. See [Locking](#locking) and [SwiftUI Integration with Observation](#-swiftui-integration-with-observation).
+
+`UIBinding` is the UIKit analog of the SwiftUI `Binding`. A dynamic member of a `UIBinding` returns a `UIBinding` to the property, as a dynamic member of a `Binding` returns a `Binding`.
 
 ### Dynamic Callable Support
 
@@ -200,7 +217,7 @@ final class MyView: UIView {
 }
 
 let view = MyView(frame: .zero)
-view.configure(withName: $state.name)
+view.configure(withName: $state.ui.name)
 view.buttonTapped()
 ```
 
@@ -219,7 +236,7 @@ final class MyView: UIView {
 let view = MyView(frame: .zero)
 struct State: Equatable { var name: String }
 @UIState var state = State(name: "test")
-view.configure(withName: $state.name)
+view.configure(withName: $state.ui.name)
 ```
 
 **Using with constant binding:**
@@ -709,7 +726,7 @@ final class LoginVC: UIViewController {
     
     private func setupBindings() {
         // Observe status changes
-        viewModel.$state.status
+        viewModel.$state.ui.status
             .sink { [weak self] status in
                 self?.statusLabel.text = status
             }
@@ -809,9 +826,9 @@ viewModel.state.title = "Updated" // triggers sink + objectWillChange
 
 ## 🔭 SwiftUI Integration with Observation
 
-`ManagedState` conforms to `Observable` from the Observation framework. This support needs iOS 17, macOS 14, tvOS 17, watchOS 10, or visionOS 1.
+`ManagedState` and `UIState` conform to `Observable` from the Observation framework. This support needs iOS 17, macOS 14, tvOS 17, watchOS 10, or visionOS 1. The examples below use `@ManagedState`. `@UIState` tracks reads and notifies observers by the same rules.
 
-An `@Observable` ViewModel can keep its state in `@ManagedState`. The `@Observable` macro cannot track a property that has a property wrapper, so mark the property with `@ObservationIgnored`. SwiftUI still tracks the state, because each read of `wrappedValue` registers an access on the `ManagedState` instance.
+An `@Observable` ViewModel can keep its state in `@ManagedState`. The `@Observable` macro cannot track a property that has a property wrapper, so mark the property with `@ObservationIgnored`. SwiftUI still tracks the state, because each read of `wrappedValue` registers an Observation access.
 
 ```swift
 @Observable
@@ -841,8 +858,83 @@ struct ContentView: View {
 }
 ```
 
-- Each change of the managed value notifies the observers one time. A `withLock(_:)` call that changes several fields also notifies them one time.
-- The rules run before the notification. The observers get only the final value, not the intermediate values of the rules.
+A ViewModel can also conform to `Observable` without the macro. Then `@ManagedState` needs no `@ObservationIgnored`.
+
+```swift
+final class ViewModel: Observable {
+    @ManagedState
+    private(set) var viewState = AppState()
+
+    func rename(to title: String) {
+        viewState.title = title
+    }
+}
+```
+
+`viewModel.viewState.title` tracks the whole value. `viewModel.$viewState[\.title]` tracks only `title`. Without the macro, Observation does not track other stored properties of the ViewModel.
+
+### Access to a field
+
+The access works as with a SwiftUI `@State` property. Each form has one result type:
+
+| Form | Result | Observation tracks |
+|---|---|---|
+| `state.title` | the value | the whole value |
+| `$state[\.title]` | the value | only `title` |
+| `$state.title` | SwiftUI `Binding<String>` | only `title` |
+| `$state.ui.title` | `UIBinding<String>` | the whole value |
+
+- `$state[\.trip.title]` tracks the full key path as one field.
+- `$state.trip.title` is a binding to `trip.title`. A read through it tracks the field `trip`.
+- If the type of the field is not `Equatable`, the read tracks the whole value.
+
+### Track one field
+
+A read of `wrappedValue` tracks the whole value. In the example above, `viewModel.state.title` reads `wrappedValue`, so the view gets a notification for a change of any field. To track one field, read it with `$state[\.title]`.
+
+```swift
+@Observable
+final class TripViewModel {
+    @ObservationIgnored
+    @ManagedState
+    private(set) var state = TripState()
+
+    func rename(to title: String) {
+        state.title = title
+    }
+}
+
+struct TripView: View {
+    let viewModel: TripViewModel
+
+    var body: some View {
+        VStack {
+            Text(viewModel.$state[\.title])
+            Text(viewModel.$state[\.trip.title])
+            TextField("Title", text: viewModel.$state.title)
+        }
+    }
+}
+```
+
+`TripView` reads only `title` and `trip.title`. SwiftUI runs its `body` again only when one of these fields gets a different value. A change of `trip.seats` does not notify it.
+
+UIKit code can use the same reads in `withObservationTracking(_:onChange:)`:
+
+```swift
+withObservationTracking {
+    titleLabel.text = viewModel.$state[\.title]
+} onChange: {
+    print("The title changes")
+}
+```
+
+### Notification rules
+
+- One change sends one notification for the whole value and one notification for each tracked field that gets a different value.
+- `withObservationTracking(_:onChange:)` calls `onChange` only for the first notification. A `withLock(_:)` call that changes several fields calls `onChange` of an observer one time.
+- An observer that reads `wrappedValue` gets a notification for each change. An observer that reads only fields gets a notification only when one of these fields changes.
+- The rules run before the notification. The observers get only the final value, not the intermediate values of the rules. A field that the rules change also notifies its observers.
 - A change to an equal value does not notify the observers.
 - The observers receive the notification before the stored value changes, as with the `@Observable` macro. A read in `onChange` returns the old value.
 - `ManagedState` notifies the observers while it holds its lock. If an observer reads the value in `onChange`, use `.synced`, `.absent`, or a recursive `.custom` lock.
@@ -861,18 +953,25 @@ CombineExt supports all major Apple platforms:
 
 ## 🔧 Advanced Configuration
 
-### ManagedState Locking
+### Locking
+
+`@UIState` and `@ManagedState` use the same lock type, `StateLock`:
 
 ```swift
 // Thread-safe (default)
 @ManagedState var state = MyState()
+@UIState var counter = 0
 
 // No locking for single-threaded contexts
 @ManagedState(lock: .absent) var state = MyState()
+@UIState(lock: .absent) var counter = 0
 
 // Custom lock
 @ManagedState(lock: .custom(NSRecursiveLock())) var state = MyState()
+@UIState(lock: .custom(NSRecursiveLock())) var counter = 0
 ```
+
+If the initializer gets no lock, the state uses `StateDefaultLock`. The default value is `.synced`. `ManagedStateLock` and `ManagedStateDefaultLock` are the deprecated names of `StateLock` and `StateDefaultLock`.
 
 ### Thread Safety and Race Conditions
 

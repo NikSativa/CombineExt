@@ -85,15 +85,13 @@ final class ObservableObjectTests: XCTestCase {
             .sink { changeCount += 1 }
             .store(in: &cancellables)
 
-        // Initial subscription triggers immediately
+        XCTAssertEqual(changeCount, 0)
+
+        uiState.wrappedValue = 1
         XCTAssertEqual(changeCount, 1)
 
-        // Changing value should trigger change
-        uiState.wrappedValue = 1
-        XCTAssertEqual(changeCount, 2)
-
         uiState.wrappedValue = 2
-        XCTAssertEqual(changeCount, 3)
+        XCTAssertEqual(changeCount, 2)
     }
 
     func testUIStateObservableObjectWithStruct() {
@@ -109,16 +107,46 @@ final class ObservableObjectTests: XCTestCase {
             .sink { changeCount += 1 }
             .store(in: &cancellables)
 
-        // Initial subscription triggers immediately
+        XCTAssertEqual(changeCount, 0)
+
+        uiState.wrappedValue = TestStruct(name: "Bob", age: 25)
         XCTAssertEqual(changeCount, 1)
 
-        // Changing value should trigger change
         uiState.wrappedValue = TestStruct(name: "Bob", age: 25)
-        XCTAssertEqual(changeCount, 2)
+        XCTAssertEqual(changeCount, 1)
+    }
 
-        // Changing to same value should not trigger change
-        uiState.wrappedValue = TestStruct(name: "Bob", age: 25)
-        XCTAssertEqual(changeCount, 2)
+    func testUIStateObjectWillChangeEmitsBeforeChange() {
+        let uiState = UIState(wrappedValue: 1)
+        var valuesInHandler: [Int] = []
+
+        uiState.objectWillChange
+            .sink { valuesInHandler.append(uiState.wrappedValue) }
+            .store(in: &cancellables)
+
+        uiState.wrappedValue = 2
+
+        XCTAssertEqual(valuesInHandler, [1])
+        XCTAssertEqual(uiState.wrappedValue, 2)
+    }
+
+    func testUIStateObjectWillChangeEmitsOncePerChange() {
+        let uiState = UIState(wrappedValue: TestModel())
+        var changeCount = 0
+
+        uiState.objectWillChange
+            .sink { changeCount += 1 }
+            .store(in: &cancellables)
+
+        uiState.withLock { value in
+            value.number = 1
+            value.binding = 5
+        }
+        uiState.wrappedValue.number = 1
+
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertEqual(uiState[\.number], 1)
+        XCTAssertEqual(uiState[\.binding], 5)
     }
 
     // MARK: - UIBinding and IgnoredState Tests
@@ -214,13 +242,13 @@ final class ObservableObjectTests: XCTestCase {
         var numbersInHandler: [Int] = []
 
         managedState.objectWillChange
-            .sink { numbersInHandler.append(managedState.number) }
+            .sink { numbersInHandler.append(managedState[\.number]) }
             .store(in: &cancellables)
 
-        managedState.number = 2
+        managedState.wrappedValue.number = 2
 
         XCTAssertEqual(numbersInHandler, [1])
-        XCTAssertEqual(managedState.number, 2)
+        XCTAssertEqual(managedState[\.number], 2)
     }
 
     func testManagedStateObjectWillChangeEmitsOncePerChange() {
@@ -235,7 +263,7 @@ final class ObservableObjectTests: XCTestCase {
             value.number = 1
             value.binding = 5
         }
-        managedState.number = 1
+        managedState.wrappedValue.number = 1
 
         XCTAssertEqual(changeCount, 1)
         XCTAssertEqual(managedState.wrappedValue, TestModel(number: 1, binding: 1))
@@ -258,17 +286,14 @@ final class ObservableObjectTests: XCTestCase {
             .sink { uiChangeCount += 1 }
             .store(in: &cancellables)
 
-        // Initial subscriptions trigger immediately
         XCTAssertEqual(valueChangeCount, 1)
-        XCTAssertEqual(uiChangeCount, 1)
+        XCTAssertEqual(uiChangeCount, 0)
 
-        // Change values
         valueSubject.wrappedValue = 1
         uiState.wrappedValue = "World"
 
-        // Check that all publishers emitted
         XCTAssertEqual(valueChangeCount, 2)
-        XCTAssertEqual(uiChangeCount, 2)
+        XCTAssertEqual(uiChangeCount, 1)
     }
 
     func testObservableObjectWithNestedProperties() {

@@ -43,7 +43,7 @@ final class EdgeCasesTests: XCTestCase {
 
             var cancellables = Set<AnyCancellable>()
             managedState.publisher.sink { _ in }.store(in: &cancellables)
-            managedState.value = "Hello"
+            managedState.wrappedValue.value = "Hello"
         }
 
         XCTAssertNil(weakManagedState)

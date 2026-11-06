@@ -1,5 +1,6 @@
 import CombineExt
 import Foundation
+import SwiftUI
 import XCTest
 
 final class UIStateTests: XCTestCase {
@@ -132,7 +133,7 @@ final class UIStateTests: XCTestCase {
     func test_nested_array() {
         @UIBinding
         var second: Int
-        _second = $subject.list.unsafe(1)
+        _second = $subject.ui.list.unsafe(1)
 
         var listStates: [Int] = []
         _second.sink { state in
@@ -262,6 +263,99 @@ extension UIStateTests {
 
         XCTAssertEqual(model.number, 100)
         XCTAssertEqual(model.binding, 0) // binding remains unchanged
+    }
+
+    func testSubscriptReadsProperty() {
+        subject.list = [1, 2, 3]
+
+        XCTAssertEqual($subject[\.counter], -1)
+        XCTAssertEqual($subject[\.list[1]], 2)
+        XCTAssertEqual($subject[\.list.count], 3)
+    }
+
+    func testDynamicMemberGivesSwiftUIBinding() {
+        let counter: Binding<Int> = $subject.counter
+
+        counter.wrappedValue = 5
+        counter.wrappedValue = 5
+
+        XCTAssertEqual(counter.wrappedValue, 5)
+        XCTAssertEqual(subject.counter, 5)
+        XCTAssertEqual(rootStates, [
+            .init(counter: -1, toggle: false),
+            .init(counter: 5, toggle: false)
+        ])
+    }
+
+    func testUIGivesBindingToProperty() {
+        var counters: [Int] = []
+        let counter: UIBinding<Int> = $subject.ui.counter
+        counter.sink { diff in
+            counters.append(diff.new)
+        }
+        .store(in: &observers)
+
+        counter.wrappedValue = 5
+
+        XCTAssertEqual(subject.counter, 5)
+        XCTAssertEqual(counter.wrappedValue, 5)
+        XCTAssertEqual(counters, [-1, 5])
+    }
+
+    func testWithLockKeepsEveryConcurrentWrite() {
+        let state = UIState(wrappedValue: State())
+        let iterations = 200
+
+        DispatchQueue.concurrentPerform(iterations: iterations) { _ in
+            state.withLock { value in
+                value.counter += 1
+            }
+        }
+
+        XCTAssertEqual(state[\.counter], iterations - 1)
+    }
+
+    func testCustomLockProtectsEachReadAndWrite() {
+        let lock = RecordingLock()
+        let state = UIState(wrappedValue: State(), lock: .custom(lock))
+
+        _ = state.wrappedValue
+        XCTAssertEqual(lock.lockCount, 1)
+
+        state.wrappedValue.counter = 5
+        XCTAssertEqual(lock.lockCount, 3)
+        XCTAssertEqual(lock.maxDepth, 1)
+    }
+
+    func testStateUsesDefaultLockWhenInitializerGetsNoLock() {
+        let lock = RecordingLock()
+        let defaultLock = StateDefaultLock
+        StateDefaultLock = .custom(lock)
+        defer {
+            StateDefaultLock = defaultLock
+        }
+
+        let state = UIState(wrappedValue: 0)
+        _ = state.wrappedValue
+
+        XCTAssertEqual(lock.lockCount, 1)
+    }
+
+    func testConcurrentFirstAccessToPublisherIsSafe() {
+        let state = UIState(wrappedValue: 0)
+
+        DispatchQueue.concurrentPerform(iterations: 100) { _ in
+            _ = state.publisher
+        }
+
+        var values: [Int] = []
+        let cancellable = state.publisher.sink { diff in
+            values.append(diff.new)
+        }
+        state.wrappedValue = 1
+
+        XCTAssertEqual(values, [0, 1])
+        cancellable.cancel()
     }
 
     func testUIStateWithDifferentTypes() {
@@ -396,8 +490,8 @@ extension UIStateTests {
         var numberValues: [Int] = []
         var bindingValues: [Int] = []
 
-        $model.number.sink { numberValues.append($0) }.store(in: &observers)
-        $model.binding.sink { bindingValues.append($0) }.store(in: &observers)
+        $model.ui.number.sink { numberValues.append($0) }.store(in: &observers)
+        $model.ui.binding.sink { bindingValues.append($0) }.store(in: &observers)
 
         model.number = 5
         model.binding = 10

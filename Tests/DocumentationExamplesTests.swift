@@ -82,7 +82,8 @@ final class DocumentationExamplesTests: XCTestCase {
         @UIState
         var state = ViewState(isOn: false)
 
-        $state.isOn
+        $state.ui
+            .isOn
             .sink { _ in }
             .store(in: &cancellables)
 
@@ -132,7 +133,7 @@ final class DocumentationExamplesTests: XCTestCase {
         }
 
         let view = MyView(frame: .zero)
-        view.configure(withName: $state.name)
+        view.configure(withName: $state.ui.name)
         view.buttonTapped()
         #endif
     }
@@ -173,7 +174,7 @@ final class DocumentationExamplesTests: XCTestCase {
         struct State: Equatable { var name: String }
         @UIState
         var state = State(name: "test")
-        view.configure(withName: $state.name)
+        view.configure(withName: $state.ui.name)
         #endif
     }
 
@@ -613,6 +614,7 @@ final class DocumentationExamplesTests: XCTestCase {
 
             private func setupBindings() {
                 viewModel.$state
+                    .ui
                     .status
                     .sink { [weak self] status in
                         self?.statusLabel.text = status
@@ -685,6 +687,27 @@ final class DocumentationExamplesTests: XCTestCase {
         $state3.withLock { value in
             _ = value
         }
+    }
+
+    func testUIStateLocking() {
+        @UIState
+        var counter1 = 0
+        @UIState(lock: .absent)
+        var counter2 = 0
+        @UIState(lock: .custom(NSRecursiveLock()))
+        var counter3 = 0
+
+        $counter1.withLock { value in
+            value += 1
+        }
+        $counter2.withLock { value in
+            value += 2
+        }
+        $counter3.withLock { value in
+            value += 3
+        }
+
+        XCTAssertEqual([counter1, counter2, counter3], [1, 2, 3])
     }
 }
 

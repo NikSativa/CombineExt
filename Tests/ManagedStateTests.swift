@@ -28,19 +28,22 @@ final class ManagedStateTests: XCTestCase {
             }
             .store(in: &cancellables)
 
-        $subject.number
+        $subject.ui
+            .number
             .sink { new in
                 self.numbers.append(new)
             }
             .store(in: &cancellables)
 
-        $subject.binding
+        $subject.ui
+            .binding
             .sink { new in
                 self.binding.append(new)
             }
             .store(in: &cancellables)
 
-        $subject.text
+        $subject.ui
+            .text
             .sink { new in
                 self.texts.append(new)
             }
@@ -49,7 +52,7 @@ final class ManagedStateTests: XCTestCase {
 
     func testClosureCapturesPropertyWrapperStorage() {
         let readNumber: () -> Int = { [_subject] in
-            return _subject.number
+            return _subject[\.number]
         }
 
         subject.number = 7
@@ -66,7 +69,7 @@ final class ManagedStateTests: XCTestCase {
         XCTAssertEqual(texts, ["0"])
 
         DispatchQueue.concurrentPerform(iterations: 4) { [_subject] idx in
-            _subject.number = idx + 1
+            _subject.wrappedValue.number = idx + 1
         }
 
         XCTAssertEqual(numbers.count, 5)
@@ -293,6 +296,21 @@ extension ManagedStateTests {
         XCTAssertEqual(model.binding, 100)
     }
 
+    func testUIGivesBindingToProperty() {
+        var numbers: [Int] = []
+        let number = $subject.ui.number
+        number.sink { new in
+            numbers.append(new)
+        }
+        .store(in: &cancellables)
+
+        number.wrappedValue = 5
+
+        XCTAssertEqual(subject, TestModel(number: 5, binding: 5))
+        XCTAssertEqual(number.wrappedValue, 5)
+        XCTAssertEqual(numbers, [0, 5])
+    }
+
     func testManagedStateWithDifferentLockTypes() {
         @ManagedState(lock: .absent)
         var model1 = TestModel(number: 0, binding: 0)
@@ -374,7 +392,7 @@ extension ManagedStateTests {
 
         let cancellable1 = $model.sink { subscriber1Values.append($0) }
         let cancellable2 = $model.sink { subscriber2Values.append($0) }
-        let cancellable3 = $model.number.sink { subscriber3Values.append($0) }
+        let cancellable3 = $model.ui.number.sink { subscriber3Values.append($0) }
 
         model.number = 1
         model.number = 2
@@ -419,7 +437,8 @@ extension ManagedStateTests {
 
         var receivedValues: [Int] = []
 
-        $model.number
+        $model.ui
+            .number
             .filter { $0.new > 5 }
             .map { $0.new * 2 }
             .sink { value in
@@ -443,9 +462,9 @@ extension ManagedStateTests {
         var bindingValues: [Int] = []
         var textValues: [String] = []
 
-        $model.number.sink { numberValues.append($0) }.store(in: &cancellables)
-        $model.binding.sink { bindingValues.append($0) }.store(in: &cancellables)
-        $model.text.sink { textValues.append($0) }.store(in: &cancellables)
+        $model.ui.number.sink { numberValues.append($0) }.store(in: &cancellables)
+        $model.ui.binding.sink { bindingValues.append($0) }.store(in: &cancellables)
+        $model.ui.text.sink { textValues.append($0) }.store(in: &cancellables)
 
         model.number = 5
         model.number = 10
@@ -508,7 +527,7 @@ extension ManagedStateTests {
             .store(in: &cancellables)
 
         DispatchQueue.concurrentPerform(iterations: 10) { [_model] i in
-            _model.number = i
+            _model.wrappedValue.number = i
         }
 
         XCTAssertTrue(Set(publishedValues.map(\.number)).isSuperset(of: 1...9))
@@ -523,7 +542,7 @@ extension ManagedStateTests {
         do {
             let model = ManagedState(wrappedValue: NotificationTestModel())
             weakModel = model
-            model.number = 1
+            model.wrappedValue.number = 1
         }
 
         XCTAssertNil(weakModel)
@@ -541,7 +560,7 @@ extension ManagedStateTests {
 
         let model = ManagedState(wrappedValue: DivergentModel())
 
-        XCTAssertEqual(model.passes, 100)
+        XCTAssertEqual(model[\.passes], 100)
     }
 
     func testDivergentRulesStopAfterMaxDepthPasses() {
@@ -555,10 +574,25 @@ extension ManagedStateTests {
         ManagedStateCyclicDependencyMaxDepth = 5
 
         let model = ManagedState(wrappedValue: DivergentModel())
-        XCTAssertEqual(model.passes, 5)
+        XCTAssertEqual(model[\.passes], 5)
 
-        model.trigger = 1
-        XCTAssertEqual(model.passes, 10)
+        model.wrappedValue.trigger = 1
+        XCTAssertEqual(model[\.passes], 10)
+    }
+
+    func testRulePassesDoNotTakeDefaultLockAgain() {
+        let lock = RecordingLock()
+        let defaultLock = StateDefaultLock
+        StateDefaultLock = .custom(lock)
+        defer {
+            StateDefaultLock = defaultLock
+        }
+
+        let model = ManagedState(wrappedValue: TestModel(number: 0, binding: 0))
+        model.wrappedValue.number = 1
+
+        XCTAssertEqual(model.wrappedValue, TestModel(number: 1, binding: 1))
+        XCTAssertEqual(lock.maxDepth, 1)
     }
 
     func testConcurrentFirstAccessToPublisherIsSafe() {
@@ -572,7 +606,7 @@ extension ManagedStateTests {
         let cancellable = model.publisher.sink { value in
             numbers.append(value.number)
         }
-        model.number = 1
+        model.wrappedValue.number = 1
 
         XCTAssertEqual(numbers, [0, 1])
         cancellable.cancel()
@@ -587,7 +621,7 @@ extension ManagedStateTests {
         XCTAssertEqual(first.hashValue, second.hashValue)
         XCTAssertNotEqual(first, different)
 
-        second.number = 2
+        second.wrappedValue.number = 2
 
         XCTAssertEqual(second, different)
         XCTAssertEqual(second.hashValue, different.hashValue)
@@ -598,11 +632,11 @@ extension ManagedStateTests {
         let model = ManagedState(wrappedValue: TrimmedTitleModel())
         let callsAfterInit = TrimmedTitleModel.titleRuleCalls
 
-        model.title = " Hello "
-        XCTAssertEqual(model.title, "Hello")
+        model.wrappedValue.title = " Hello "
+        XCTAssertEqual(model[\.title], "Hello")
         XCTAssertEqual(TrimmedTitleModel.titleRuleCalls, callsAfterInit + 2)
 
-        model.amount = 1
+        model.wrappedValue.amount = 1
         XCTAssertEqual(TrimmedTitleModel.titleRuleCalls, callsAfterInit + 2)
     }
 
@@ -613,13 +647,15 @@ extension ManagedStateTests {
         var receivedNumbers: [Int] = []
         var receivedTexts: [String] = []
 
-        $subject.number
+        $subject.ui
+            .number
             .sink { new in
                 receivedNumbers.append(new)
             }
             .store(in: &cancellables)
 
-        $subject.text
+        $subject.ui
+            .text
             .sink { new in
                 receivedTexts.append(new)
             }

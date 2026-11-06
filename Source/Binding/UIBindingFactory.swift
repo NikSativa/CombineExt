@@ -73,7 +73,7 @@ public struct UIBindingFactory<Value> {
                              UIBinding accessed before initialization.
                              This binding was created with UIBindingFactory.placeholder and must be
                              initialized by assigning a proper binding before use.
-                             Example: _binding = $state.property
+                             Example: _binding = $state.ui.property
                              """)
                          },
                          set: { _ in
@@ -81,7 +81,7 @@ public struct UIBindingFactory<Value> {
                              UIBinding accessed before initialization.
                              This binding was created with UIBindingFactory.placeholder and must be
                              initialized by assigning a proper binding before use.
-                             Example: _binding = $state.property
+                             Example: _binding = $state.ui.property
                              """)
                          })
         }
