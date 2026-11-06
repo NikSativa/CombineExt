@@ -27,7 +27,7 @@ public final class UIState<Value: Equatable> {
     /// Internal subject that emits a `DiffedValue` each time the value is updated.
     ///
     /// This drives the `publisher` and emits a `DiffedValue<Value>` each time the `wrappedValue` is updated.
-    private lazy var subject: CurrentValueSubject<DiffedValue<Value>, Failure> = CurrentValueSubject(.init(old: nil, binding: observe()))
+    private lazy var subject: CurrentValueSubject<DiffedValue<Value>, Failure> = CurrentValueSubject(unretainedDiffedValue(old: nil))
 
     /// Initializes a `UIState` with a given initial value.
     ///
@@ -45,8 +45,7 @@ public final class UIState<Value: Equatable> {
                 return
             }
 
-            let change: DiffedValue<Value> = .init(old: oldValue, binding: observe())
-            subject.send(change)
+            subject.send(unretainedDiffedValue(old: oldValue))
         }
     }
 
@@ -70,6 +69,17 @@ public final class UIState<Value: Equatable> {
             .removeUnchangedAfterFirst()
             .eraseToAnyPublisher()
     }()
+
+    private func unretainedDiffedValue(old: Value?) -> DiffedValue<Value> {
+        let fallback = wrappedValue
+        return .init(old: old,
+                     get: { [weak self] in
+                         return self?.wrappedValue ?? fallback
+                     },
+                     set: { [weak self] newValue in
+                         self?.wrappedValue = newValue
+                     })
+    }
 }
 
 extension UIState: SafeBinding {}

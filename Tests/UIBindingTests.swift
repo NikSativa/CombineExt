@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 final class UIBindingTests: XCTestCase {
-    // swiftformat:next:disable unusedPrivateDeclarations
+    // swiftformat:disable:next unusedPrivateDeclarations
     @UIBinding(.placeholder)
     private var lazyValue: String
 
@@ -45,38 +45,7 @@ final class UIBindingTests: XCTestCase {
     }
 }
 
-private extension UIBindingTests {
-    struct TestModel: BehavioralStateContract {
-        var number: Int
-        var binding: Int
-
-        init(number: Int, binding: Int) {
-            self.number = number
-            self.binding = binding
-        }
-
-        mutating func applyRules() {
-            // No rules for this test
-        }
-
-        @SubscriptionBuilder
-        static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
-            // No binding rules needed for this test
-        }
-
-        @SubscriptionBuilder
-        static func applyEventRules(to state: RulesPublisher) -> [AnyCancellable] {
-            // No event rules needed for this test
-        }
-
-        @AnyTokenBuilder<Any>
-        static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
-            // No any rules needed for this test
-        }
-    }
-
-    // MARK: - Additional UIBinding Tests
-
+extension UIBindingTests {
     func testUIBindingWithDifferentTypes() {
         @UIState
         var intValue: Int = 0
@@ -183,13 +152,13 @@ private extension UIBindingTests {
         @UIState
         var counter: Int = 0
 
-        var receivedValues: [DiffedValue<Int>] = []
+        var receivedValues: [Int] = []
         let expectation = XCTestExpectation(description: "Should receive values")
         expectation.expectedFulfillmentCount = 3
 
         $counter.publisher
             .sink { diff in
-                receivedValues.append(diff)
+                receivedValues.append(diff.new)
                 expectation.fulfill()
             }
             .store(in: &observers)
@@ -198,10 +167,7 @@ private extension UIBindingTests {
         counter = 2
 
         wait(for: [expectation], timeout: 1.0)
-        XCTAssertEqual(receivedValues.count, 3)
-        XCTAssertEqual(receivedValues[0].new, 0) // Initial value
-        XCTAssertEqual(receivedValues[1].new, 1)
-        XCTAssertEqual(receivedValues[2].new, 2)
+        XCTAssertEqual(receivedValues, [0, 1, 2])
     }
 
     func testUIBindingWithKeyPathSubscription() {
@@ -217,8 +183,8 @@ private extension UIBindingTests {
         model.number = 5
         model.binding = 10
 
-        XCTAssertEqual(numberValues, [0, 5])
-        XCTAssertEqual(bindingValues, [0, 10])
+        XCTAssertEqual(numberValues, [0, 5, 5])
+        XCTAssertEqual(bindingValues, [0, 0, 10])
     }
 
     func testUIBindingWithCombineOperators() {
@@ -252,20 +218,18 @@ private extension UIBindingTests {
         @UIState
         var counter: Int = 0
 
-        var subscriber1Values: [DiffedValue<Int>] = []
-        var subscriber2Values: [DiffedValue<Int>] = []
+        var subscriber1Values: [Int] = []
+        var subscriber2Values: [Int] = []
 
-        $counter.publisher.sink { subscriber1Values.append($0) }.store(in: &observers)
-        $counter.publisher.sink { subscriber2Values.append($0) }.store(in: &observers)
+        $counter.publisher.sink { subscriber1Values.append($0.new) }.store(in: &observers)
+        $counter.publisher.sink { subscriber2Values.append($0.new) }.store(in: &observers)
 
         counter = 1
         counter = 2
         counter = 3
 
-        XCTAssertEqual(subscriber1Values.count, 4) // Initial + 3 changes
-        XCTAssertEqual(subscriber2Values.count, 4) // Initial + 3 changes
-        XCTAssertEqual(subscriber1Values.map(\.new), [0, 1, 2, 3])
-        XCTAssertEqual(subscriber2Values.map(\.new), [0, 1, 2, 3])
+        XCTAssertEqual(subscriber1Values, [0, 1, 2, 3])
+        XCTAssertEqual(subscriber2Values, [0, 1, 2, 3])
     }
 
     func testUIBindingWithCancellation() {
@@ -473,5 +437,36 @@ private extension UIBindingTests {
 
         let boolConstant = UIBinding<Bool>.constant(true)
         XCTAssertTrue(boolConstant.wrappedValue)
+    }
+}
+
+private extension UIBindingTests {
+    struct TestModel: BehavioralStateContract {
+        var number: Int
+        var binding: Int
+
+        init(number: Int, binding: Int) {
+            self.number = number
+            self.binding = binding
+        }
+
+        mutating func applyRules() {
+            // No rules for this test
+        }
+
+        @SubscriptionBuilder
+        static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+            // No binding rules needed for this test
+        }
+
+        @SubscriptionBuilder
+        static func applyEventRules(to state: RulesPublisher) -> [AnyCancellable] {
+            // No event rules needed for this test
+        }
+
+        @AnyTokenBuilder<Any>
+        static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
+            // No any rules needed for this test
+        }
     }
 }

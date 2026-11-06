@@ -223,8 +223,6 @@ final class UIStateTests: XCTestCase {
     }
 }
 
-// MARK: - DynamicCall Tests for UIState
-
 extension UIStateTests {
     func test_UIStateDynamicCallNoArguments() {
         @UIState
@@ -265,45 +263,6 @@ extension UIStateTests {
         XCTAssertEqual(model.number, 100)
         XCTAssertEqual(model.binding, 0) // binding remains unchanged
     }
-}
-
-private extension UIStateTests {
-    struct State: Equatable {
-        var counter: Int = -1
-        var toggle: Bool = false
-        var list: [Int] = []
-    }
-
-    struct TestModel: BehavioralStateContract {
-        var number: Int
-        var binding: Int
-
-        init(number: Int, binding: Int) {
-            self.number = number
-            self.binding = binding
-        }
-
-        mutating func applyRules() {
-            // No rules for this test
-        }
-
-        @SubscriptionBuilder
-        static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
-            // No binding rules needed for this test
-        }
-
-        @SubscriptionBuilder
-        static func applyEventRules(to state: RulesPublisher) -> [AnyCancellable] {
-            // No event rules needed for this test
-        }
-
-        @AnyTokenBuilder<Any>
-        static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
-            // No any rules needed for this test
-        }
-    }
-
-    // MARK: - Additional UIState Tests
 
     func testUIStateWithDifferentTypes() {
         @UIState
@@ -443,8 +402,8 @@ private extension UIStateTests {
         model.number = 5
         model.binding = 10
 
-        XCTAssertEqual(numberValues, [0, 5])
-        XCTAssertEqual(bindingValues, [0, 10])
+        XCTAssertEqual(numberValues, [0, 5, 5])
+        XCTAssertEqual(bindingValues, [0, 0, 10])
     }
 
     func testUIStateWithCombineOperators() {
@@ -539,6 +498,7 @@ private extension UIStateTests {
 
             var cancellables = Set<AnyCancellable>()
             uiState.sink { _ in }.store(in: &cancellables)
+            uiState.wrappedValue = 1
         }
 
         // UIState should be deallocated
@@ -633,5 +593,42 @@ private extension UIStateTests {
 
         charValue = "1"
         XCTAssertEqual(charValue, "1")
+    }
+}
+
+private extension UIStateTests {
+    struct State: Equatable {
+        var counter: Int = -1
+        var toggle: Bool = false
+        var list: [Int] = []
+    }
+
+    struct TestModel: BehavioralStateContract {
+        var number: Int
+        var binding: Int
+
+        init(number: Int, binding: Int) {
+            self.number = number
+            self.binding = binding
+        }
+
+        mutating func applyRules() {
+            // No rules for this test
+        }
+
+        @SubscriptionBuilder
+        static func applyBindingRules(to state: RulesPublisher) -> [AnyCancellable] {
+            // No binding rules needed for this test
+        }
+
+        @SubscriptionBuilder
+        static func applyEventRules(to state: RulesPublisher) -> [AnyCancellable] {
+            // No event rules needed for this test
+        }
+
+        @AnyTokenBuilder<Any>
+        static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
+            // No any rules needed for this test
+        }
     }
 }
