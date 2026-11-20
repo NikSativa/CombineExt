@@ -1,7 +1,7 @@
 import Combine
-import CombineExt
 import Foundation
 import XCTest
+@testable import CombineExt
 
 final class UIBindingTests: XCTestCase {
     // swiftformat:disable:next unusedPrivateDeclarations
@@ -492,6 +492,20 @@ private extension UIBindingTests {
 }
 
 extension UIBindingTests {
+    func testSubscriptionDoesNotCallGetOfABindingWithoutPublisher() {
+        var getCalls = 0
+        let binding = UIBinding<Int>(get: {
+                                         getCalls += 1
+                                         return 0
+                                     },
+                                     set: { _ in })
+        binding
+            .sink { (_: DiffedValue<Int>) in }
+            .store(in: &observers)
+
+        XCTAssertEqual(getCalls, 0)
+    }
+
     func testObserveRemoveDuplicatesPassesAChangeOfTheObservedFieldAfterAChangeOfAnotherField() {
         let source = ListModelSource()
         var received: [[Int]] = []
@@ -568,6 +582,7 @@ private final class ListModelSource {
         let old = model
         update(&model)
         changes.send(DiffedValue(old: old,
+                                 snapshot: model,
                                  get: { [unowned self] in
                                      return model
                                  },
