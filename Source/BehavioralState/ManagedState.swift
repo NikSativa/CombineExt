@@ -157,7 +157,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
 
         @UIState(lock: .absent)
         var initialValue = wrappedValue
-        let valueSubject = CurrentValueSubject<DiffedValue<Value>, Failure>(.init(old: nil, binding: $initialValue()))
+        let valueSubject = CurrentValueSubject<DiffedValue<Value>, Failure>(.init(old: nil, snapshot: wrappedValue, binding: $initialValue()))
         self.valueSubject = valueSubject
         self.diffedPublisher = valueSubject
             .removeUnchangedAfterFirst()
@@ -166,7 +166,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
             .map(\.new)
             .removeDuplicates()
             .eraseToAnyPublisher()
-        self.rulesSubject = .init(.init(old: nil, binding: $initialValue()))
+        self.rulesSubject = .init(.init(old: nil, snapshot: wrappedValue, binding: $initialValue()))
 
         notificationRules += createAnyRules(unretainedBinding(fallback: wrappedValue))
         bindingRules += createBindingRules()
@@ -262,7 +262,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
             objectWillChangeSubject.send()
             storage.replaceLockedValue(with: pair.new)
         }
-        valueSubject.send(.init(old: values.old, binding: unretainedBinding(fallback: pair.new)))
+        valueSubject.send(.init(old: values.old, snapshot: pair.new, binding: unretainedBinding(fallback: pair.new)))
     }
 
     private func unretainedBinding(fallback: Value) -> UIBinding<Value> {
@@ -284,7 +284,7 @@ public final class ManagedState<Value: BehavioralStateContract> {
         var bindable: Value = values.new
         bindable.applyRules()
 
-        let changes = DiffedValue(old: values.old, binding: $bindable())
+        let changes = DiffedValue(old: values.old, snapshot: bindable, binding: $bindable())
         rulesSubject.send(changes)
 
         return .init(old: values.new, new: bindable)

@@ -60,7 +60,7 @@ public final class UIState<Value: Equatable> {
         self.publisher = subject
             .removeUnchangedAfterFirst()
             .eraseToAnyPublisher()
-        subject.value = unretainedDiffedValue(old: nil, fallback: wrappedValue)
+        subject.value = unretainedDiffedValue(old: nil, new: wrappedValue)
     }
 
     /// The current value of the state.
@@ -126,13 +126,14 @@ public final class UIState<Value: Equatable> {
 
         objectWillChangeSubject.send()
         storage.replaceLockedValue(with: newValue)
-        subject.send(unretainedDiffedValue(old: oldValue, fallback: newValue))
+        subject.send(unretainedDiffedValue(old: oldValue, new: newValue))
     }
 
-    private func unretainedDiffedValue(old: Value?, fallback: Value) -> DiffedValue<Value> {
+    private func unretainedDiffedValue(old: Value?, new: Value) -> DiffedValue<Value> {
         return .init(old: old,
+                     snapshot: new,
                      get: { [weak self] in
-                         return self?.wrappedValue ?? fallback
+                         return self?.wrappedValue ?? new
                      },
                      set: { [weak self] newValue in
                          self?.wrappedValue = newValue

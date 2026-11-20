@@ -744,3 +744,68 @@ private struct TrimmedTitleModel: BehavioralStateContract {
     @AnyTokenBuilder<Any>
     static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {}
 }
+
+extension ManagedStateTests {
+    func testRemoveDuplicatesPassesAChangeOfTheObservedFieldAfterAChangeOfAnotherField() {
+        @ManagedState
+        var state = ListModel()
+        var received: [[Int]] = []
+        $state.ui
+            .list
+            .dropFirst()
+            .removeDuplicates()
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff.new)
+            }
+            .store(in: &cancellables)
+
+        state.counter = 1
+        state.list.append(1)
+
+        XCTAssertEqual(received, [[], [1]])
+    }
+
+    func testRemoveDuplicatesDropsASecondEmissionThatDoesNotChangeTheObservedField() {
+        @ManagedState
+        var state = ListModel()
+        var received: [[Int]] = []
+        $state.ui
+            .list
+            .dropFirst()
+            .removeDuplicates()
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff.new)
+            }
+            .store(in: &cancellables)
+
+        state.counter = 1
+        state.counter = 2
+        state.list.append(1)
+
+        XCTAssertEqual(received, [[], [1]])
+    }
+
+    func testRemoveDuplicatesFollowedByReceiveOnMainPassesAChangeOfTheObservedField() {
+        @ManagedState
+        var state = ListModel()
+        var received: [DiffedValue<[Int]>] = []
+        $state.ui
+            .list
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff)
+            }
+            .store(in: &cancellables)
+
+        state.counter = 1
+        state.list.append(1)
+        waitForMainQueue()
+
+        XCTAssertEqual(received, [
+            DiffedValue(old: [], get: [], set: { _ in }),
+            DiffedValue(old: [], get: [1], set: { _ in })
+        ])
+    }
+}

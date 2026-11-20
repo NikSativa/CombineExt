@@ -341,4 +341,40 @@ final class SafeBindingTests: XCTestCase {
         let mirror = $value.customMirror
         XCTAssertNotNil(mirror)
     }
+
+    func testSafeElementRemoveDuplicatesPassesAChangeOfTheElementAfterAChangeOfAnotherElement() {
+        @UIState
+        var list = [0, 0]
+        var received: [Int] = []
+        $list.safe(0, default: -1)
+            .dropFirst()
+            .removeDuplicates()
+            .sink { (diff: DiffedValue<Int>) in
+                received.append(diff.new)
+            }
+            .store(in: &cancellables)
+
+        list[1] = 1
+        list[0] = 5
+
+        XCTAssertEqual(received, [0, 5])
+    }
+
+    func testUnsafeElementRemoveDuplicatesPassesAChangeOfTheElementAfterAChangeOfAnotherElement() {
+        @UIState
+        var list = [0, 0]
+        var received: [Int] = []
+        $list.unsafe(0)
+            .dropFirst()
+            .removeDuplicates()
+            .sink { (diff: DiffedValue<Int>) in
+                received.append(diff.new)
+            }
+            .store(in: &cancellables)
+
+        list[1] = 1
+        list[0] = 5
+
+        XCTAssertEqual(received, [0, 5])
+    }
 }

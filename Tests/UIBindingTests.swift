@@ -1,3 +1,4 @@
+import Combine
 import CombineExt
 import Foundation
 import XCTest
@@ -487,5 +488,91 @@ private extension UIBindingTests {
         static func applyAnyRules(to state: UIBinding<Self>) -> [Any] {
             // No any rules needed for this test
         }
+    }
+}
+
+extension UIBindingTests {
+    func testObserveRemoveDuplicatesPassesAChangeOfTheObservedFieldAfterAChangeOfAnotherField() {
+        let source = ListModelSource()
+        var received: [[Int]] = []
+        source.binding
+            .observe(\.list)
+            .removeDuplicates()
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff.new)
+            }
+            .store(in: &observers)
+
+        source.change { $0.counter = 1 }
+        source.change { $0.list.append(1) }
+
+        XCTAssertEqual(received, [[], [1]])
+    }
+
+    func testObserveRemoveDuplicatesDropsASecondEmissionThatDoesNotChangeTheObservedField() {
+        let source = ListModelSource()
+        var received: [[Int]] = []
+        source.binding
+            .observe(\.list)
+            .removeDuplicates()
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff.new)
+            }
+            .store(in: &observers)
+
+        source.change { $0.counter = 1 }
+        source.change { $0.counter = 2 }
+        source.change { $0.list.append(1) }
+
+        XCTAssertEqual(received, [[], [1]])
+    }
+
+    func testObserveRemoveDuplicatesFollowedByReceiveOnMainPassesAChangeOfTheObservedField() {
+        let source = ListModelSource()
+        var received: [DiffedValue<[Int]>] = []
+        source.binding
+            .observe(\.list)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff)
+            }
+            .store(in: &observers)
+
+        source.change { $0.counter = 1 }
+        source.change { $0.list.append(1) }
+        waitForMainQueue()
+
+        XCTAssertEqual(received, [
+            DiffedValue(old: [], get: [], set: { _ in }),
+            DiffedValue(old: [], get: [1], set: { _ in })
+        ])
+    }
+}
+
+private final class ListModelSource {
+    private var model = ListModel()
+    private let changes = PassthroughSubject<DiffedValue<ListModel>, Never>()
+
+    var binding: UIBinding<ListModel> {
+        return UIBinding(publisher: changes.eraseToAnyPublisher(),
+                         get: { [unowned self] in
+                             return model
+                         },
+                         set: { [unowned self] newValue in
+                             model = newValue
+                         })
+    }
+
+    func change(_ update: (inout ListModel) -> Void) {
+        let old = model
+        update(&model)
+        changes.send(DiffedValue(old: old,
+                                 get: { [unowned self] in
+                                     return model
+                                 },
+                                 set: { [unowned self] newValue in
+                                     model = newValue
+                                 }))
     }
 }

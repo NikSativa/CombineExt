@@ -82,7 +82,10 @@ public struct UIBinding<Value> {
                 set: @escaping (Value) -> Void) {
         self.get = get
         self.set = set
-        self.diffedPublisher = publisher ?? CurrentValueSubject(.init(old: nil, get: get, set: set)).eraseToAnyPublisher()
+        self.diffedPublisher = publisher ?? Deferred {
+            return CurrentValueSubject(DiffedValue(old: nil, get: get, set: set))
+        }
+        .eraseToAnyPublisher()
     }
 
     /// Initializes a `UIBinding` from a factory configuration.

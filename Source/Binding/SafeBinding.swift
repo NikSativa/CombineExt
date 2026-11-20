@@ -187,10 +187,11 @@ public extension SafeBinding where Value: MutableCollection {
     /// ```
     func unsafe(_ index: Value.Index) -> UIBinding<Value.Element> {
         let publisher: AnyPublisher<DiffedValue<Value.Element>, Never>? = filter { collection in
-            return collection.new.contains(index: index)
+            return collection.snapshot.contains(index: index)
         }
         .map { collection in
             return .init(old: collection.old?[safe: index],
+                         snapshot: collection.snapshot[index],
                          get: { collection.new[safe: index]! },
                          set: { collection.new[safe: index]! = $0 })
         }
@@ -233,14 +234,17 @@ public extension SafeBinding where Value: MutableCollection {
     /// ```
     func safe(_ index: Value.Index, default defaultValue: @autoclosure @escaping () -> Value.Element) -> UIBinding<Value.Element> {
         let elementPublisher: AnyPublisher<DiffedValue<Value.Element>, Never>? = map { parent in
-            guard parent.new.contains(index: index) else {
-                return .init(old: defaultValue(),
+            guard parent.snapshot.contains(index: index) else {
+                let fallback = defaultValue()
+                return .init(old: fallback,
+                             snapshot: fallback,
                              get: defaultValue,
                              set: { _ in })
             }
 
             return .init(old: parent.old?[safe: index],
-                         get: parent.new[safe: index] ?? defaultValue(),
+                         snapshot: parent.snapshot[index],
+                         get: { parent.new[safe: index] ?? defaultValue() },
                          set: { parent.new[safe: index] = $0 })
         }
         .eraseToAnyPublisher()

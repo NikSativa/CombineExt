@@ -47,38 +47,64 @@ public struct DiffedValue<Value> {
     public let get: () -> Value
     public let set: (Value) -> Void
 
+    let snapshot: Value
+
+    init(old: Value?, snapshot: Value, get: @escaping () -> Value, set: @escaping (Value) -> Void) {
+        self.old = old
+        self.snapshot = snapshot
+        self.get = get
+        self.set = set
+    }
+
+    init(old: Value?, snapshot: Value, binding: UIBinding<Value>) {
+        self.init(old: old,
+                  snapshot: snapshot,
+                  get: { binding.wrappedValue },
+                  set: { binding.wrappedValue = $0 })
+    }
+
     /// Creates a new `DiffedValue` instance with an optional old value and a new binding.
+    ///
+    /// The initializer calls `get` one time and stores the result as the new value at the time of creation.
+    /// `==` and `hash(into:)` use this stored value. `new` calls `get` on each read.
     ///
     /// - Parameters:
     ///   - old: The previous value before the change. May be `nil` if no previous value exists.
     ///   - new: A binding to the new value.
     public init(old: Value?, get: @escaping () -> Value, set: @escaping (Value) -> Void) {
-        self.old = old
-        self.get = get
-        self.set = set
+        self.init(old: old, snapshot: get(), get: get, set: set)
     }
 
     /// Creates a new `DiffedValue` instance with an optional old value and a new binding.
+    ///
+    /// The initializer calls `get` one time and stores the result as the new value at the time of creation.
+    /// `==` and `hash(into:)` use this stored value. `new` calls `get` on each read.
     ///
     /// - Parameters:
     ///   - old: The previous value before the change. May be `nil` if no previous value exists.
     ///   - new: A binding to the new value.
     public init(old: Value?, get: @autoclosure @escaping () -> Value, set: @escaping (Value) -> Void) {
-        self.old = old
-        self.get = get
-        self.set = set
+        self.init(old: old, snapshot: get(), get: get, set: set)
     }
 
+    /// Creates a new `DiffedValue` instance with an optional old value and a binding to the new value.
+    ///
+    /// The initializer reads `binding` one time and stores the result as the new value at the time of creation.
+    /// `==` and `hash(into:)` use this stored value. `new` reads `binding` on each read.
+    ///
+    /// - Parameters:
+    ///   - old: The previous value before the change. May be `nil` if no previous value exists.
+    ///   - binding: A binding to the new value.
     public init(old: Value?, binding: UIBinding<Value>) {
-        self.old = old
-        self.get = { binding.wrappedValue }
-        self.set = { binding.wrappedValue = $0 }
+        self.init(old: old, snapshot: binding.wrappedValue, binding: binding)
     }
 
     /// Maps the diffed value to a nested property using a writable key path.
     ///
     /// This method creates a new `DiffedValue` that tracks changes to a specific property
     /// of the wrapped value, enabling fine-grained observation of nested state changes.
+    ///
+    /// The result stores the property of the stored new value. `==` and `hash(into:)` of the result use it.
     ///
     /// - Parameter keyPath: A writable key path to the nested property to observe.
     /// - Returns: A new `DiffedValue` that tracks changes to the specified property.
@@ -98,7 +124,8 @@ public struct DiffedValue<Value> {
     /// ```
     public func map<V>(keyPath: WritableKeyPath<Value, V>) -> DiffedValue<V> {
         return .init(old: old?[keyPath: keyPath],
-                     get: new[keyPath: keyPath],
+                     snapshot: snapshot[keyPath: keyPath],
+                     get: { new[keyPath: keyPath] },
                      set: { new[keyPath: keyPath] = $0 })
     }
 
@@ -212,23 +239,24 @@ extension DiffedValue: CustomDebugStringConvertible {
 extension DiffedValue: Equatable where Value: Equatable {
     /// Compares two diffed values.
     ///
-    /// Two diffed values are equal when their old values are equal and their new values are equal.
-    /// The comparison reads `new` at the time of the call.
+    /// Two diffed values are equal when their old values are equal and their new values at the time of creation are equal.
+    /// The comparison does not read `new`. A later change of the source does not change the result.
+    /// Thus `removeDuplicates()` removes an emission only when it describes the same change as the previous emission.
     public static func ==(lhs: Self, rhs: Self) -> Bool {
-        return lhs.old == rhs.old && lhs.new == rhs.new
+        return lhs.old == rhs.old && lhs.snapshot == rhs.snapshot
     }
 }
 
 extension DiffedValue: Hashable where Value: Hashable {
     /// Hashes the essential components of this diffed value.
     ///
-    /// This method combines the hash values of both the old and new values
-    /// to create a unique hash for the diffed value.
+    /// This method combines the hash values of the old value and the new value at the time of creation, as `==` compares them.
+    /// The hash value does not change when the source changes.
     ///
     /// - Parameter hasher: The hasher to use when combining the components.
     public func hash(into hasher: inout Hasher) {
         hasher.combine(old)
-        hasher.combine(new)
+        hasher.combine(snapshot)
     }
 }
 

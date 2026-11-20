@@ -726,3 +726,68 @@ private extension UIStateTests {
         }
     }
 }
+
+extension UIStateTests {
+    func testRemoveDuplicatesPassesAChangeOfTheObservedFieldAfterAChangeOfAnotherField() {
+        @UIState
+        var state = ListModel()
+        var received: [[Int]] = []
+        $state.ui
+            .list
+            .dropFirst()
+            .removeDuplicates()
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff.new)
+            }
+            .store(in: &observers)
+
+        state.counter = 1
+        state.list.append(1)
+
+        XCTAssertEqual(received, [[], [1]])
+    }
+
+    func testRemoveDuplicatesDropsASecondEmissionThatDoesNotChangeTheObservedField() {
+        @UIState
+        var state = ListModel()
+        var received: [[Int]] = []
+        $state.ui
+            .list
+            .dropFirst()
+            .removeDuplicates()
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff.new)
+            }
+            .store(in: &observers)
+
+        state.counter = 1
+        state.counter = 2
+        state.list.append(1)
+
+        XCTAssertEqual(received, [[], [1]])
+    }
+
+    func testRemoveDuplicatesFollowedByReceiveOnMainPassesAChangeOfTheObservedField() {
+        @UIState
+        var state = ListModel()
+        var received: [DiffedValue<[Int]>] = []
+        $state.ui
+            .list
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { (diff: DiffedValue<[Int]>) in
+                received.append(diff)
+            }
+            .store(in: &observers)
+
+        state.counter = 1
+        state.list.append(1)
+        waitForMainQueue()
+
+        XCTAssertEqual(received, [
+            DiffedValue(old: [], get: [], set: { _ in }),
+            DiffedValue(old: [], get: [1], set: { _ in })
+        ])
+    }
+}
